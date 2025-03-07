@@ -10,3 +10,6 @@ export { default as VideoCard } from './VideoCard';
 export { default as ChannelCard } from './ChannelCard';
 export { default as SuggestedVideos } from './SuggestedVideos';
 export { default as WatchHistory } from './WatchHistory';
+export { default as SearchHistory } from './SearchHistory';
+export { default as Playlists } from './Playlists';
+export { default as PlaylistDetail } from './PlaylistDetail';

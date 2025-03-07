@@ -18,7 +18,7 @@ const Feed = () => {
     {
       part: 'snippet',
       q: selectedCategory,
-      maxResults: 20 // Smaller batch size for smoother infinite scroll
+      maxResults: 50 // Increased from 20 to 50 to show more videos
     }
   );
 
@@ -42,7 +42,7 @@ const Feed = () => {
         <Box 
           sx={{ 
             height: { xs: 'auto', md: '92vh' }, 
-            width: { xs: '100%', md: '220px' }, // Sidebar
+            width: { xs: '100%', md: '280px' }, // Increased from 240px to 280px
             position: { xs: 'static', md: 'sticky' },
             top: { md: '70px' },
             flexShrink: 0, // Prevent sidebar from shrinking

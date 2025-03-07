@@ -1,73 +1,102 @@
-# Getting Started with Create React App
+# BoxTube 🎥
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+BoxTube is a modern video streaming app inspired by youtube's ui built with Youtube's v3 api, React and Material-UI, offering a sleek dark theme interface and enhanced user experience features.
 
-## Available Scripts
+![BoxTube Homepage](./assets/pic1.png)
+![Video player](./assets/pic2.png)
 
-In the project directory, you can run:
+## 🌟 Features
 
-### `npm install react-script` 
-if not already installed. and then:
+### Core Features
+- 🎨 Modern Dark Theme UI
+- 🔍 Advanced Search with Filters
+- 📱 Fully Responsive Design
+- 🎵 Video Playback
+- 📺 Channel Pages
 
-### `npm start`
+### User Features
+- 👤 User Authentication (Username-based)
+- 📋 Custom Playlists
+- ❤️ Favorites System
+- ⏰ Watch Later
+- 📝 Watch History
+- 🔔 Channel Subscriptions
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+### Enhanced UX
+- 💾 Local Storage for User Data
+- 🎯 Smart Search Suggestions
+- 📊 Advanced Search Filters
+- ⚡ API Call Optimization
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+## 🚀 Getting Started
 
-### `npm test`
+### Prerequisites
+- Node.js (v14 or higher)
+- npm or yarn
+- YouTube Data API Key
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+### Link to site:
+https://boxtube.netlify.app/
 
-### `npm run build`
+## 🛠️ Built With
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+- React.js
+- Material-UI
+- YouTube Data API v3
+- React Router
+- Context API for State Management
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+## 📦 Project Structure
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+```
+src/
+├── components/         # React components
+│   ├── common/        # Shared components
+│   ├── auth/          # Authentication components
+│   └── ...
+├── contexts/          # React Context providers
+├── utils/            # Utility functions
+├── styles/           # Global styles
+└── App.js            # Main app component
+```
 
-### `npm run eject`
+## 🎨 Features in Detail
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+### Search System
+- Real-time search suggestions
+- Search history tracking
+- Advanced filters (duration, upload date, quality)
+- Debounced API calls
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+### Playlist Management
+- Create custom playlists
+- Add/remove videos
+- Quick access to Watch Later and Favorites
+- Playlist thumbnails and video count
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+### User Profile
+- Watch history tracking
+- Subscription management
+- Profile customization
+- Username-based authentication
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+### Video Player
+- Custom video player interface
+- Related videos suggestions
+- Channel subscription integration
+- Add to playlist functionality
 
-## Learn More
+## 📱 App Screenshots
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+| Home Page | Video Player |
+|-----------|--------------|
+|![Home](./screenshots/home.png)|![Player](./screenshots/player.png)|
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+| Search Results | Channel Page |
+|---------------|--------------|
+|![Search](./screenshots/search.png)|![Channel](./screenshots/channel.png)|
 
-### Code Splitting
+| Playlists | Profile |
+|-----------|---------|
+|![Playlists](./screenshots/playlists.png)|![Profile](./screenshots/profile.png)|
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)

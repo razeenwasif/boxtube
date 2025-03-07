@@ -11,22 +11,29 @@ import {
   Stack, 
   Container, 
   Divider, 
-  CircularProgress
+  CircularProgress,
+  Button
 } from '@mui/material';
 import { 
-  CheckCircle
+  CheckCircle,
+  Subscriptions
 } from '@mui/icons-material';
 // Import our custom components and utilities
 import SuggestedVideos from './SuggestedVideos';
 import ShareButton from './common/ShareButton';
 import { fetchFromAPI } from '../utils/fetchFromAPI';
 import useWatchHistory from '../hooks/useWatchHistory';
+import { useAuth } from '../contexts/AuthContext';
+// Import the AddToPlaylistButton component
+import AddToPlaylistButton from './common/AddToPlaylistButton';
 
 const VideoDetail = () => {
   // State management using useState hook
   const [videoDetail, setVideoDetail] = useState(null);
   // videos will store the list of suggested videos
   const [videos, setVideos] = useState(null);
+  // Subscription state
+  const [subscribed, setSubscribed] = useState(false);
   
   // Reference to the video player
   const playerRef = useRef(null);
@@ -36,6 +43,9 @@ const VideoDetail = () => {
   
   // Get watch history functions
   const { addToHistory } = useWatchHistory();
+  
+  // Get auth context
+  const { currentUser, subscribeToChannel, isSubscribed } = useAuth();
   
   // useEffect hook runs when the component mounts or when 'id' changes
   useEffect(() => {
@@ -53,6 +63,11 @@ const VideoDetail = () => {
             snippet: videoDetails.snippet,
             statistics: videoDetails.statistics
           });
+          
+          // Check if subscribed to this channel
+          if (currentUser) {
+            setSubscribed(isSubscribed(videoDetails.snippet.channelId));
+          }
         }
 
         // Fetch related videos based on the current video ID
@@ -64,7 +79,22 @@ const VideoDetail = () => {
     };
 
     fetchVideoData();
-  }, [id, addToHistory]);
+  }, [id, addToHistory, currentUser, isSubscribed]);
+  
+  // Handle subscribe/unsubscribe
+  const handleSubscribe = () => {
+    if (!currentUser || !videoDetail) {
+      return;
+    }
+    
+    const channelId = videoDetail.snippet.channelId;
+    const channelTitle = videoDetail.snippet.channelTitle;
+    // Use a default thumbnail if not available
+    const channelThumbnail = 'https://ui-avatars.com/api/?name=' + encodeURIComponent(channelTitle) + '&background=random&color=fff';
+    
+    const isNowSubscribed = subscribeToChannel(channelId, channelTitle, channelThumbnail);
+    setSubscribed(isNowSubscribed);
+  };
 
   // Show loading state if video details haven't loaded yet
   if (!videoDetail?.snippet) return (
@@ -112,7 +142,7 @@ const VideoDetail = () => {
       >
         <Box 
           sx={{ 
-            width: { xs: '100%', md: '70%' }, // Sidebar
+            width: { xs: '100%', md: '65%' }, // Reduced from 70% to 65% to give more space to sidebar
             padding: { xs: 2, md: 3 }
           }}
         >
@@ -157,21 +187,42 @@ const VideoDetail = () => {
             sx={{ color: 'var(--text-primary)' }} 
             gap={2}
           >
-            <Link to={`/channel/${channelId}`}>
-              <Typography 
-                variant="subtitle1" 
-                sx={{ 
-                  display: 'flex', 
-                  alignItems: 'center',
-                  color: 'var(--text-primary)',
-                  '&:hover': { color: 'var(--primary-color)' },
-                  transition: 'color 0.2s ease'
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              <Link to={`/channel/${channelId}`}>
+                <Typography 
+                  variant="subtitle1" 
+                  sx={{ 
+                    display: 'flex', 
+                    alignItems: 'center',
+                    color: 'var(--text-primary)',
+                    '&:hover': { color: 'var(--primary-color)' },
+                    transition: 'color 0.2s ease'
+                  }}
+                >
+                  {channelTitle}
+                  <CheckCircle sx={{ fontSize: '14px', color: 'var(--primary-color)', ml: '5px' }} />
+                </Typography>
+              </Link>
+              
+              <Button
+                variant={subscribed ? "outlined" : "contained"}
+                startIcon={<Subscriptions />}
+                onClick={handleSubscribe}
+                size="small"
+                sx={{
+                  alignSelf: 'flex-start',
+                  backgroundColor: subscribed ? 'transparent' : 'var(--primary-color)',
+                  borderColor: subscribed ? 'var(--primary-color)' : 'transparent',
+                  color: subscribed ? 'var(--primary-color)' : 'white',
+                  '&:hover': {
+                    backgroundColor: subscribed ? 'rgba(255, 0, 0, 0.08)' : 'var(--primary-color-dark)',
+                    borderColor: subscribed ? 'var(--primary-color)' : 'transparent',
+                  }
                 }}
               >
-                {channelTitle}
-                <CheckCircle sx={{ fontSize: '14px', color: 'var(--primary-color)', ml: '5px' }} />
-              </Typography>
-            </Link>
+                {subscribed ? 'Subscribed' : 'Subscribe'}
+              </Button>
+            </Box>
             
             <Stack direction="row" gap="20px" alignItems="center">
               <Typography variant="body2" sx={{ color: 'var(--text-secondary)' }}>
@@ -183,13 +234,16 @@ const VideoDetail = () => {
               
               {/* Share button */}
               <ShareButton videoId={id} title={title} />
+              
+              {/* Add to playlist button */}
+              <AddToPlaylistButton video={videoDetail} />
             </Stack>
           </Stack>
         </Box>
         
         <Box 
           sx={{ 
-            width: { xs: '100%', md: '30%' }, // Side
+            width: { xs: '100%', md: '35%' }, // Increased from 30% to 35%
             padding: 2,
             borderLeft: { md: `1px solid var(--border-color)` },
             backgroundColor: { xs: 'transparent', md: 'rgba(11, 0, 0, 0.3)' },

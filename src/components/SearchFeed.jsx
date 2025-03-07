@@ -81,7 +81,7 @@ const SearchFeed = () => {
   const apiParams = {
     part: 'snippet',
     q: searchTerm,
-    maxResults: 20
+    maxResults: 50
   };
   
   // Add filters to API parameters
