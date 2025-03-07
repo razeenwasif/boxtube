@@ -1,52 +1,118 @@
-import { useState, useEffect} from 'react';
-import { Box, Stack, Typography } from '@mui/material';
+import { useState } from 'react';
+import { Box, Stack, Typography, Container } from '@mui/material';
 import { SideBar, Videos } from './';
-import { fetchFromAPI } from '../utils/fetchFromAPI';
+import useYoutubeApi from '../hooks/useYoutubeApi';
 
 // This is the Side Bar and its categories
 
 const Feed = () => {
-
   const [selectedCategory, setSelectedCategory] = useState('New');
-  const [videos, setVideos] = useState([]);
-  // useEffect is a lifecycle hook which gets called when the component is first rendered
-  // we need to provide a dependency array
-  // the code inside of this function will only run when the page is reloaded
-  useEffect(() => {
-    fetchFromAPI(`search?part=snippet&q=${selectedCategory}`).then((data) => setVideos(data.items));
-  }, [selectedCategory]);
+  const { 
+    data: videos, 
+    loading, 
+    error, 
+    hasMore, 
+    fetchMoreData 
+  } = useYoutubeApi(
+    'search',
+    {
+      part: 'snippet',
+      q: selectedCategory,
+      maxResults: 20 // Smaller batch size for smoother infinite scroll
+    }
+  );
 
   return (
-    // Stack is going to be the primary wrapper wrapping the sidebar and the main bar
-    // md = medium devices or larger
-    // Box is implementing the Feed
-    <Stack sx={{ flexDirection: { sx: "column", md: "row" }}}> 
-      <Box sx={{ // made the body dark (black)
-        height: { sx: 'auto', md: '92vh' }, 
-        borderRight: '1px solid #3d3d3d',
-        px: { sx: 0, md: 2 }, // px = padding horizontal
-        backgroundColor: 'rgba(0, 0, 0, 0.1)', // dark transparent background
-        }}> 
-        <SideBar 
-          selectedCategory={selectedCategory}
-          setSelectedCategory={setSelectedCategory}
-        />
-        
-        
-        <Typography className='copyright' variant='body2' sx={{ mt: 1.5, color: '#fff' }}> 
-          <p>Copyright 2023 BoxTube</p>
-        </Typography>
-      </Box>
+    <Container 
+      maxWidth="xl" 
+      disableGutters
+      sx={{
+        background: 'var(--background-color)',
+        minHeight: '100vh',
+      }}
+    >
+      <Stack 
+        sx={{ 
+          flexDirection: { xs: "column", md: "row" },
+          gap: 2,
+          padding: { xs: 1, sm: 2 },
+        }}
+      > 
+        <Box 
+          sx={{ 
+            height: { xs: 'auto', md: '92vh' }, 
+            width: { xs: '100%', md: '240px' },
+            position: { xs: 'static', md: 'sticky' },
+            top: { md: '70px' },
+          }}
+        > 
+          <SideBar 
+            selectedCategory={selectedCategory}
+            setSelectedCategory={setSelectedCategory}
+          />
+          
+          <Typography 
+            className='copyright' 
+            variant='caption' 
+            sx={{ 
+              mt: 2, 
+              color: 'var(--text-secondary)',
+              display: 'block',
+              textAlign: 'center',
+              padding: '0 16px'
+            }}
+          > 
+            © 2023 BoxTube
+          </Typography>
+        </Box>
 
-      <Box p={2} sx={{ overflowY: 'auto', height: '90vh', flex: 2}} paddingLeft={{xs: '10px', md: '55px'}}>
-        <Typography variant='h4' fontWeight="bold" marginBottom={2} sx={{ color: 'white' }}>
-          {selectedCategory} <span style={{ color: 'white' }}>videos</span>
-        </Typography>
+        <Box 
+          sx={{ 
+            height: '90vh',
+            flex: 1,
+            borderRadius: '12px',
+            background: 'var(--secondary-bg)',
+            backdropFilter: 'blur(5px)',
+            border: '1px solid var(--border-color)',
+          }}
+        >
+          <Box p={3}>
+            <Typography 
+              variant='h5' 
+              fontWeight="500" 
+              sx={{ 
+                color: 'var(--text-primary)',
+                borderBottom: '1px solid var(--border-color)',
+                paddingBottom: '12px',
+              }}
+            >
+              {selectedCategory} <span style={{ color: 'var(--primary-color)' }}>videos</span>
+            </Typography>
+          </Box>
 
-        <Videos videos={videos}/>
-      </Box>
-    </Stack>
-  )
-}
+          {error ? (
+            <Typography 
+              variant="body1" 
+              sx={{ 
+                color: 'var(--text-secondary)',
+                textAlign: 'center',
+                mt: 4
+              }}
+            >
+              {error}
+            </Typography>
+          ) : (
+            <Videos 
+              videos={videos}
+              loading={loading}
+              hasMore={hasMore}
+              onLoadMore={fetchMoreData}
+            />
+          )}
+        </Box>
+      </Stack>
+    </Container>
+  );
+};
 
-export default Feed
+export default Feed;

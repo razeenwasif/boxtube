@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "@babel/plugin-proposal-private-property-in-object": "",
     "@emotion/react": "^11.10.0",
     "@emotion/styled": "^11.10.0",
     "@fontsource/roboto": "^5.0.3",
@@ -13,8 +14,7 @@
     "react-dom": "^18.2.0",
     "react-player": "^2.10.1",
     "react-router-dom": "^6.3.0",
-    "react-scripts": "^5.0.1",
-    "@babel/plugin-proposal-private-property-in-object":""
+    "react-scripts": "^5.0.1"
   },
   "scripts": {
     "start": "react-scripts start",
