@@ -29,21 +29,23 @@ const Feed = () => {
       sx={{
         background: 'var(--background-color)',
         minHeight: '100vh',
+        overflow: 'hidden', // Prevent horizontal overflow
       }}
     >
       <Stack 
+        direction={{ xs: "column", md: "row" }}
+        spacing={2}
         sx={{ 
-          flexDirection: { xs: "column", md: "row" },
-          gap: 2,
           padding: { xs: 1, sm: 2 },
         }}
-      > 
+      >
         <Box 
           sx={{ 
             height: { xs: 'auto', md: '92vh' }, 
-            width: { xs: '100%', md: '240px' },
+            width: { xs: '100%', md: '220px' }, // Sidebar
             position: { xs: 'static', md: 'sticky' },
             top: { md: '70px' },
+            flexShrink: 0, // Prevent sidebar from shrinking
           }}
         > 
           <SideBar 
@@ -74,6 +76,7 @@ const Feed = () => {
             background: 'var(--secondary-bg)',
             backdropFilter: 'blur(5px)',
             border: '1px solid var(--border-color)',
+            overflow: 'hidden', // Prevent content overflow
           }}
         >
           <Box p={3}>

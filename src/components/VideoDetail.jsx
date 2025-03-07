@@ -95,7 +95,8 @@ const VideoDetail = () => {
       sx={{
         minHeight: '95vh',
         paddingTop: 2,
-        paddingBottom: 4
+        paddingBottom: 4,
+        overflow: 'hidden' // Prevent horizontal overflow
       }}
     >
       <Stack 
@@ -111,7 +112,7 @@ const VideoDetail = () => {
       >
         <Box 
           sx={{ 
-            width: { xs: '100%', md: '70%' },
+            width: { xs: '100%', md: '70%' }, // Sidebar
             padding: { xs: 2, md: 3 }
           }}
         >
@@ -188,12 +189,13 @@ const VideoDetail = () => {
         
         <Box 
           sx={{ 
-            width: { xs: '100%', md: '30%' },
+            width: { xs: '100%', md: '30%' }, // Side
             padding: 2,
             borderLeft: { md: `1px solid var(--border-color)` },
             backgroundColor: { xs: 'transparent', md: 'rgba(11, 0, 0, 0.3)' },
             height: { md: '100vh' },
-            overflowY: 'auto'
+            overflowY: 'auto',
+            flexShrink: 0 // Prevent sidebar from shrinking
           }}
         >
           <Typography 
