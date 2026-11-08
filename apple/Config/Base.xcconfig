@@ -1,6 +1,8 @@
 // Shared build settings for Boxtube.
-// Signing team: your Personal Team. Change it if you move to a paid team.
+// Signing: your Apple developer team and a bundle id that team can use. To build under your own
+// Apple ID, override both in Secrets.xcconfig (git-ignored) instead of editing this file.
 BOXTUBE_TEAM = C63K728GC6
+BOXTUBE_BUNDLE_ID = com.razeenwasif.boxtube
 
 // Secrets live in Secrets.xcconfig (git-ignored). Copy Secrets.example.xcconfig to start.
 YOUTUBE_API_KEY =

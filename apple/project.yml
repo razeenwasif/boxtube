@@ -45,7 +45,7 @@ targets:
         destinationFilters: [iOS]
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.razeenwasif.boxtube
+        PRODUCT_BUNDLE_IDENTIFIER: $(BOXTUBE_BUNDLE_ID)
         PRODUCT_NAME: Boxtube
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_FILE: Boxtube/Info.plist
@@ -78,7 +78,7 @@ targets:
       - sdk: SwiftUI.framework
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.razeenwasif.boxtube.widgets
+        PRODUCT_BUNDLE_IDENTIFIER: $(BOXTUBE_BUNDLE_ID).widgets
         PRODUCT_NAME: BoxtubeWidgets
         INFOPLIST_FILE: BoxtubeWidgets/Info.plist
         SKIP_INSTALL: YES
@@ -92,7 +92,7 @@ targets:
       - target: Boxtube
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.razeenwasif.boxtube.uitests
+        PRODUCT_BUNDLE_IDENTIFIER: $(BOXTUBE_BUNDLE_ID).uitests
         TEST_TARGET_NAME: Boxtube
         GENERATE_INFOPLIST_FILE: YES
         TARGETED_DEVICE_FAMILY: "1,2"
