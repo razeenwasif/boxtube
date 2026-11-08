@@ -164,15 +164,19 @@ struct MacMusic: View {
     @State private var feed: [Video] = []
     @State private var selected: String = "new"
     @State private var tracks: [Video] = []
+    @State private var filter = LibraryFilter.playlists
+    var onVideos: () -> Void = {}
+
+    enum LibraryFilter: String, CaseIterable { case playlists = "Playlists", artists = "Artists", liked = "Liked" }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                library.frame(width: 270)
+                library.frame(width: 290)
                 page
-                nowPlaying.frame(width: 300)
+                nowPlaying.frame(width: 320)
             }
-            .padding(8)
+            .padding(.horizontal, 8).padding(.top, 8)
             playerBar
         }
         .observing(model.store, { db in try Q.playlists(db, music: true) }) { playlists = $0 }
@@ -194,21 +198,88 @@ struct MacMusic: View {
     }
 
     private var library: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Your library").font(.system(size: 15, weight: .bold)).padding(.horizontal, 6).padding(.bottom, 8)
-                libRow(id: "new", title: "New releases", meta: "From artists you follow", art: AnyView(ArtView(seed: "new", title: "NEW", showWord: false)))
-                libRow(id: "liked", title: "Liked music", meta: "\(liked.count) songs", art: AnyView(ZStack { BX.coral; Image(systemName: "heart.fill").foregroundStyle(BX.cream) }))
-                ForEach(playlists) { p in libRow(id: p.id, title: p.playlist.title, meta: "Playlist · \(p.count)", art: AnyView(ArtView(seed: p.id, title: p.playlist.title, showWord: false))) }
-                ForEach(artists) { a in libRow(id: a.channel.id, title: a.channel.title, meta: "Artist", round: true, art: AnyView(ChannelAvatar(title: a.channel.title, url: a.channel.avatarURL, size: 44))) }
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                // The window's close / minimise / zoom buttons sit here (see MacRoot.lightCenters).
+                Color.clear.frame(width: 52, height: 12)
+                Spacer()
+                HStack(spacing: 0) {
+                    modeTab("Videos", on: false) { onVideos() }
+                    modeTab("Music", on: true) {}
+                }
+                .padding(3)
+                .frame(height: 30)
+                .background(BX.ground, in: Capsule())
             }
-            .padding(12)
+            .padding(.horizontal, 4)
+            .gesture(WindowDragGesture())
+            HStack {
+                Text("Your library").font(.system(size: 15, weight: .bold))
+                Spacer()
+                Button {
+                    Task { if let p = try? await model.store.createPlaylist(title: "New playlist", music: true) { selected = p.id } }
+                } label: {
+                    Image(systemName: "plus").font(.system(size: 13, weight: .bold)).foregroundStyle(BX.text)
+                        .frame(width: 30, height: 30).background(BX.surface3, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .help("New playlist")
+                .accessibilityLabel("New playlist")
+            }
+            .padding(.horizontal, 4).padding(.top, 4)
+            HStack(spacing: 6) {
+                ForEach(LibraryFilter.allCases, id: \.self) { f in
+                    Button { filter = f } label: {
+                        Text(f.rawValue).font(.system(size: 12, weight: filter == f ? .bold : .semibold))
+                            .foregroundStyle(filter == f ? BX.coralText : BX.text)
+                            .padding(.horizontal, 11).frame(height: 28)
+                            .background(filter == f ? BX.coral.opacity(0.18) : BX.surface3, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(filter == f ? .isSelected : [])
+                }
+            }
+            .padding(.horizontal, 4)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 2) {
+                    if filter != .artists {
+                        libRow(id: "new", title: "New releases", meta: "From artists you follow", art: AnyView(ArtView(seed: "new", title: "NEW", showWord: false)))
+                        libRow(id: "liked", title: "Liked music", meta: "\(liked.count) songs", art: AnyView(ZStack { BX.coral; Image(systemName: "heart.fill").foregroundStyle(BX.cream) }))
+                    }
+                    if filter == .playlists {
+                        ForEach(playlists) { p in libRow(id: p.id, title: p.playlist.title, meta: "Playlist · \(p.count)", art: AnyView(ArtView(seed: p.id, title: p.playlist.title, showWord: false))) }
+                    }
+                    if filter != .liked {
+                        ForEach(artists) { a in libRow(id: a.channel.id, title: a.channel.title, meta: "Artist", round: true, art: AnyView(ChannelAvatar(title: a.channel.title, url: a.channel.avatarURL, size: 44))) }
+                    }
+                    if filter == .liked {
+                        ForEach(liked) { v in libRow(id: "v:" + v.id, title: v.title, meta: v.channelTitle, art: AnyView(VideoThumbnail(v, radius: 0, showDuration: false, aspect: 1))) }
+                    }
+                }
+            }
+            .scrollIndicators(.hidden)
         }
+        .padding(.horizontal, 12).padding(.vertical, 14)
         .background(BX.surface, in: .rect(cornerRadius: 14))
     }
 
+    private func modeTab(_ title: String, on: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title).font(.system(size: 12.5, weight: on ? .bold : .semibold))
+                .foregroundStyle(on ? BX.coralInk : BX.muted)
+                .padding(.horizontal, 12).frame(height: 24)
+                .background(on ? BX.coral : .clear, in: Capsule())
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(on ? .isSelected : [])
+    }
+
     private func libRow(id: String, title: String, meta: String, round: Bool = false, art: AnyView) -> some View {
-        Button { selected = id } label: {
+        Button {
+            if id.hasPrefix("v:"), let v = liked.first(where: { "v:" + $0.id == id }) { model.open(v, present: false); return }
+            selected = id
+        } label: {
             HStack(spacing: 11) {
                 art.frame(width: 44, height: 44).clipShape(round ? AnyShape(Circle()) : AnyShape(RoundedRectangle(cornerRadius: 8)))
                 VStack(alignment: .leading, spacing: 1) {
@@ -217,7 +288,7 @@ struct MacMusic: View {
                 }
                 Spacer()
             }
-            .padding(6)
+            .padding(.horizontal, 6).frame(height: 56)
             .background(selected == id ? .white.opacity(0.06) : .clear, in: .rect(cornerRadius: 10))
             .contentShape(Rectangle())
         }

@@ -89,6 +89,9 @@ public final class PlayerEngine: NSObject {
 
     public func setRate(_ rate: Double) { state.rate = rate; js("cmd('rate', \(rate))") }
 
+    public private(set) var muted = false
+    public func setMuted(_ on: Bool) { muted = on; js(on ? "cmd('mute')" : "cmd('unmute')") }
+
     public private(set) var captionsOn = false
     public func setCaptions(_ on: Bool) { captionsOn = on; js("cmd('cc', \(on))") }
 

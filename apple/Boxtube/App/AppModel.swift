@@ -63,6 +63,7 @@ final class AppModel {
     var clearAfterWeeks: Int { didSet { defaults.set(clearAfterWeeks, forKey: "clearAfterWeeks") } }
     var tintFromVideo: Bool { didSet { defaults.set(tintFromVideo, forKey: "tintFromVideo") } }
     var displayName: String { didSet { defaults.set(displayName, forKey: "displayName") } }
+    var autoplay: Bool { didSet { defaults.set(autoplay, forKey: "autoplay") } }
 
     // Navigation
     var tab: Tab = .home
@@ -86,6 +87,14 @@ final class AppModel {
 
     // Time box queue
     var segments: [QueueSegment] = []
+    /// The list the current video was started from (a playlist, Watch later…), shown as "Playing from".
+    var playingFrom: PlayingFrom?
+    struct PlayingFrom: Equatable {
+        var title: String
+        var playlistId: String?
+        var videos: [Video]
+        func position(of id: String?) -> Int? { videos.firstIndex { $0.id == id }.map { $0 + 1 } }
+    }
     var activeSegmentEnd: Double?
 
     // Hooks set by platform code
@@ -108,6 +117,7 @@ final class AppModel {
         clearAfterWeeks = defaults.object(forKey: "clearAfterWeeks") as? Int ?? 4
         tintFromVideo = defaults.object(forKey: "tintFromVideo") as? Bool ?? true
         displayName = defaults.string(forKey: "displayName") ?? "Jordan Diaz"
+        autoplay = defaults.object(forKey: "autoplay") as? Bool ?? true
         recentSearches = defaults.stringArray(forKey: "recentSearches") ?? []
 
         player.onProgress = { [weak self] video, state in
@@ -115,7 +125,10 @@ final class AppModel {
             Task { try? await self.store.recordProgress(videoId: video.id, position: state.time, duration: state.duration) }
             self.onPlaybackChanged?(video, state)
         }
-        player.onEnded = { [weak self] _ in self?.advanceQueue() }
+        player.onEnded = { [weak self] _ in
+            guard let self else { return }
+            if self.autoplay || !self.segments.isEmpty { self.advanceQueue() }
+        }
     }
 
     // MARK: Lifecycle
@@ -152,6 +165,7 @@ final class AppModel {
 
     func open(_ video: Video, at start: Double? = nil, present: Bool = true) {
         segments = []
+        if let from = playingFrom, from.position(of: video.id) == nil { playingFrom = nil }
         activeSegmentEnd = nil
         Task {
             var resume = start ?? 0
@@ -169,6 +183,14 @@ final class AppModel {
             #endif
         }
         updatePalette(for: video)
+    }
+
+    /// Plays a list in order and remembers where it came from.
+    func play(list videos: [Video], from title: String, playlistId: String? = nil, startingAt index: Int = 0) {
+        guard videos.indices.contains(index) else { return }
+        playingFrom = PlayingFrom(title: title, playlistId: playlistId, videos: videos)
+        player.queue = Array(videos.dropFirst(index + 1))
+        open(videos[index])
     }
 
     func play(segments: [QueueSegment]) {

@@ -20,8 +20,10 @@ struct MacRoot: View {
 
     var body: some View {
         @Bindable var model = model
+        let chrome = currentChrome
         HStack(spacing: 0) {
-            if sidebarVisible {
+            switch chrome {
+            case .sidebar:
                 MacSidebar(section: $section, subs: subs, laterCount: laterCount) {
                     withAnimation(.snappy(duration: 0.3)) { sidebarVisible = false }
                 }
@@ -31,18 +33,25 @@ struct MacRoot: View {
                 .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Color.white.opacity(0.06)))
                 .padding(.leading, 10).padding(.vertical, 10)
                 .transition(.move(edge: .leading).combined(with: .opacity))
+            case .rail:
+                MacRail(section: $section)
+                    .padding(.leading, 10).padding(.vertical, 10)
+                    .transition(.move(edge: .leading).combined(with: .opacity))
+            case .hidden, .music:
+                EmptyView()
             }
             VStack(spacing: 0) {
-                topBar
+                if chrome != .music, !(chrome == .rail && model.showNotes) { topBar(chrome) }
                 NavigationStack(path: Binding(get: { model.paths[.home] ?? [] }, set: { model.paths[.home] = $0 })) {
                     detail
                         .navigationDestination(for: Route.self) { MacRouteScreen(route: $0).navigationBarBackButtonHidden(true) }
                 }
             }
         }
+        .animation(.snappy(duration: 0.3), value: chrome)
         .background(background)
         .ignoresSafeArea(edges: .top)
-        .background(TrafficLightPositioner(origin: CGPoint(x: sidebarVisible ? 28 : 22, y: 0), rowCenterY: 38).frame(width: 0, height: 0))
+        .background(TrafficLightPositioner(centers: lightCenters(chrome)).frame(width: 0, height: 0))
         .toolbar(removing: .title)
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .overlay {
@@ -67,18 +76,38 @@ struct MacRoot: View {
         .observing(model.store, { db in try WatchLaterEntry.fetchCount(db) }) { laterCount = $0 }
     }
 
+    enum Chrome: Equatable { case sidebar, hidden, rail, music }
+
+    private var currentChrome: Chrome {
+        if model.watching != nil { return .rail }
+        if section == .music { return .music }
+        return sidebarVisible ? .sidebar : .hidden
+    }
+
+    /// Button centres from the window's top-left, matching each artboard.
+    private func lightCenters(_ chrome: Chrome) -> [CGPoint] {
+        switch chrome {
+        case .sidebar: return (0..<3).map { CGPoint(x: 35 + 20 * Double($0), y: 38) }
+        case .hidden: return (0..<3).map { CGPoint(x: 29 + 20 * Double($0), y: 40) }
+        case .rail: return (0..<3).map { CGPoint(x: 42, y: 32 + 19 * Double($0)) }
+        case .music: return (0..<3).map { CGPoint(x: 30 + 20 * Double($0), y: 37) }
+        }
+    }
+
     // MARK: Top bar (back/forward, centred search, bell) — doubles as the window drag area
 
-    private var topBar: some View {
+    private func topBar(_ chrome: Chrome) -> some View {
         ZStack {
             HStack(spacing: 6) {
-                if !sidebarVisible {
+                if chrome == .hidden {
                     Color.clear.frame(width: 72, height: 1)
                     barButton("sidebar.left", "Show sidebar") { withAnimation(.snappy(duration: 0.3)) { sidebarVisible = true } }
                 }
                 barButton("chevron.left", "Back", disabled: model.watching == nil && (model.paths[.home] ?? []).isEmpty) { goBack() }
                 barButton("chevron.right", "Forward", disabled: true) {}
                 Spacer()
+                if chrome == .rail, model.tintFromVideo, model.palette != .standard { PalettePill() }
+                MacCastButton()
                 Button { section = .subscriptions } label: {
                     Image(systemName: "bell").font(.system(size: 15, weight: .medium)).foregroundStyle(BX.text2)
                         .frame(width: 36, height: 36)
@@ -104,13 +133,16 @@ struct MacRoot: View {
                 }
                 .font(.system(size: 13.5))
                 .padding(.leading, 14).padding(.trailing, 8)
-                .frame(width: 520, height: 38)
+                .frame(height: 38)
+                .frame(maxWidth: 520)
                 .background(Color(hex: 0x17171A), in: .rect(cornerRadius: 11))
                 .overlay(RoundedRectangle(cornerRadius: 11).strokeBorder(BX.line))
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .keyboardShortcut("k", modifiers: .command)
+            // Keep clear of the buttons on either side when the window is narrow.
+            .padding(.horizontal, chrome == .rail && model.tintFromVideo && model.palette != .standard ? 380 : (chrome == .hidden ? 160 : 110))
         }
         .padding(.leading, 20).padding(.trailing, 24)
         .frame(height: 60)
@@ -158,7 +190,7 @@ struct MacRoot: View {
             case .history: MacVideoGrid(title: "History", fetch: { db in try Q.history(db, limit: 120).map(\.video) })
             case .liked: MacVideoGrid(title: "Liked videos", fetch: { db in try Q.liked(db) })
             case .notes: MacAllNotes()
-            case .music: MacMusic()
+            case .music: MacMusic(onVideos: { section = .home })
             case .timeBox: TimeBoxView().frame(maxWidth: 520).frame(maxWidth: .infinity)
             case .channel(let id): MacChannel(channelId: id)
             }
@@ -322,6 +354,99 @@ struct HoverHighlight<Content: View>: View {
         content
             .background(hovering || pressed ? Color.white.opacity(0.05) : .clear, in: .rect(cornerRadius: radius))
             .onHover { hovering = $0 }
+    }
+}
+
+// MARK: - Icon rail (macOS · Watch / Notes / Colours artboards)
+
+struct MacRail: View {
+    @Environment(AppModel.self) private var model
+    @Binding var section: MacSection?
+
+    var body: some View {
+        let tinted = model.tintFromVideo && model.palette != .standard
+        let fg = tinted ? model.palette.muted : BX.text2
+        VStack(spacing: 6) {
+            Color.clear.frame(height: 50 + 14) // traffic lights sit here (12 pt, 7 pt apart)
+            item(.home, "Home", fg) { go(.home) }
+            item(.shorts, "Shorts", fg) { go(.shorts) }
+            item(.subs, "Subscriptions", fg) { go(.subscriptions) }
+            item(.playlists, "Playlists", fg) { go(.playlists) }
+            item(.history, "History", fg) { go(.history) }
+            Button { withAnimation(.snappy) { model.showNotes.toggle() } } label: {
+                Image(systemName: "doc.text").font(.system(size: 17, weight: .regular))
+                    .foregroundStyle(model.showNotes ? BX.coralText : fg)
+                    .frame(width: 42, height: 42)
+                    .background(model.showNotes ? BX.coral.opacity(0.14) : .clear, in: .rect(cornerRadius: 11))
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Notes (N)")
+            .accessibilityLabel("Notes")
+            .accessibilityAddTraits(model.showNotes ? .isSelected : [])
+            Spacer()
+            Text(initials).font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                .frame(width: 32, height: 32).background(BX.violet, in: Circle())
+                .accessibilityLabel(model.displayName)
+        }
+        .padding(.top, 16).padding(.bottom, 16)
+        .frame(width: 64)
+        .frame(maxHeight: .infinity)
+        .background(tinted ? model.palette.surface : Color(hex: 0x141417))
+        .clipShape(.rect(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Color.white.opacity(0.06)))
+    }
+
+    private func go(_ s: MacSection) {
+        model.showNotes = false
+        model.watching = nil
+        model.paths[.home] = []
+        section = s
+    }
+
+    private var initials: String {
+        let l = model.displayName.split(separator: " ").prefix(2).compactMap(\.first).map(String.init).joined()
+        return l.isEmpty ? "JD" : l.uppercased()
+    }
+
+    private func item(_ icon: BXIcon, _ label: String, _ fg: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            IconView(icon, size: 20, lineWidth: 1.8).foregroundStyle(fg)
+                .frame(width: 42, height: 42).contentShape(Rectangle())
+        }
+        .buttonStyle(SidebarRowStyle())
+        .help(label)
+        .accessibilityLabel(label)
+    }
+}
+
+/// Toolbar pill from the colours-from-video artboard: label, three swatches, on/off switch.
+struct PalettePill: View {
+    @Environment(AppModel.self) private var model
+    var body: some View {
+        let p = model.palette
+        HStack(spacing: 10) {
+            Text("Palette from this video").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(p.muted)
+            HStack(spacing: 4) {
+                ForEach(Array(p.swatches.enumerated()), id: \.offset) { _, c in
+                    Circle().fill(c).frame(width: 18, height: 18).overlay(Circle().strokeBorder(.white.opacity(0.3), lineWidth: 1.5))
+                }
+            }
+            .accessibilityHidden(true)
+            Button {
+                withAnimation(.easeInOut(duration: 0.4)) { model.tintFromVideo = false; model.palette = .standard }
+            } label: {
+                Capsule().fill(p.accent).frame(width: 38, height: 24)
+                    .overlay(alignment: .trailing) { Circle().fill(p.ground).frame(width: 18, height: 18).padding(.trailing, 3) }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Tint the window from the video")
+            .accessibilityValue("On")
+        }
+        .padding(.leading, 12).padding(.trailing, 6)
+        .frame(height: 36)
+        .background(p.surface, in: Capsule())
+        .overlay(Capsule().strokeBorder(.white.opacity(0.08)))
     }
 }
 

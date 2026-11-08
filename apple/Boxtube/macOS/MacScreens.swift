@@ -46,7 +46,7 @@ struct MacVideoGrid: View {
                     LargeTitle(name ?? title)
                     Spacer()
                     if !videos.isEmpty {
-                        Button { model.player.queue = Array(videos.dropFirst()); model.open(videos[0]) } label: {
+                        Button { model.play(list: videos, from: name ?? title, playlistId: playlistId) } label: {
                             Label("Play all", systemImage: "play.fill").font(.system(size: 13.5, weight: .bold)).foregroundStyle(BX.coralInk)
                                 .padding(.horizontal, 16).frame(height: 34).background(BX.coral, in: Capsule())
                         }
@@ -55,7 +55,9 @@ struct MacVideoGrid: View {
                 }
                 if videos.isEmpty { HintCard(icon: "tray", title: "Nothing here yet", message: "Videos you add show up here.") }
                 LazyVGrid(columns: gridColumns, spacing: 28) {
-                    ForEach(videos) { VideoCard(video: $0, progress: progress[$0.id]) }
+                    ForEach(Array(videos.enumerated()), id: \.element.id) { i, v in
+                        VideoCard(video: v, progress: progress[v.id]) { model.play(list: videos, from: name ?? title, playlistId: playlistId, startingAt: i) }
+                    }
                 }
             }
             .padding(28)

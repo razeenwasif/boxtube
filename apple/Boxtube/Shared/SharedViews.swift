@@ -29,9 +29,10 @@ struct VideoCard: View {
     var progress: Double?
     var showCounts = true
     var muted = false
+    var action: (() -> Void)? = nil
 
     var body: some View {
-        Button { model.open(video) } label: {
+        Button { action?() ?? model.open(video) } label: {
             VStack(alignment: .leading, spacing: 12) {
                 VideoThumbnail(video, radius: 20, progress: progress)
                     .saturation(muted ? 0.45 : 1)
