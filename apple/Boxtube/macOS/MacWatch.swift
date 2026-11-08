@@ -814,7 +814,9 @@ struct MacCommandPalette: View {
             Item(id: "float", title: "Open floating player", keys: "⌘⇧P", icon: "pip.enter", tint: Color(hex: 0x8FB0F2)) { openWindow(id: "floating") },
             Item(id: "keys", title: "Show keyboard shortcuts", keys: "?", icon: "keyboard", tint: BX.muted) { NotificationCenter.default.post(name: .boxtubeShowShortcuts, object: nil) },
             Item(id: "refresh", title: "Refresh subscriptions", keys: "⌘R", icon: "arrow.clockwise", tint: BX.muted) { Task { await model.refresh(force: true) } },
-        ]
+        ] + (model.googleConfigured ? [model.account == nil
+            ? Item(id: "google", title: "Sign in with Google", keys: "", icon: "person.crop.circle.badge.plus", tint: Color(hex: 0x8FB0F2)) { Task { await model.signInWithGoogle() } }
+            : Item(id: "import", title: "Import from YouTube", keys: "", icon: "square.and.arrow.down", tint: Color(hex: 0x8FB0F2)) { Task { await model.importFromYouTube() } }] : [])
     }
 
     private var filtered: [Item] {

@@ -142,7 +142,7 @@ struct WatchLaterScreen: View {
                 }
                 .padding(.horizontal, 10)
                 LargeTitle("Watch later").padding(.horizontal, 20).padding(.top, 6)
-                Text("\(rows.count) videos · \(Format.minutes(Double(total))) · nothing piles up").font(.system(size: 13)).foregroundStyle(BX.muted).padding(.horizontal, 20).padding(.top, 4)
+                Text(rows.isEmpty ? "Nothing piles up here" : "\(rows.count) video\(rows.count == 1 ? "" : "s") · \(Format.minutes(Double(total))) · nothing piles up").font(.system(size: 13)).foregroundStyle(BX.muted).padding(.horizontal, 20).padding(.top, 4)
 
                 if !leaving.isEmpty {
                     HStack(spacing: 14) {
@@ -315,6 +315,11 @@ struct SettingsSheet: View {
                         ForEach([1, 2, 4, 8], id: \.self) { Text("\($0) week\($0 == 1 ? "" : "s")").tag($0) }
                     }
                     Toggle("Tint from the video", isOn: $model.tintFromVideo)
+                }
+                Section {
+                    GoogleAccountSection()
+                } header: { Text("YouTube account") } footer: {
+                    Text("Read-only: Boxtube copies your subscriptions, playlists and liked videos. Changes you make here stay in Boxtube.")
                 }
                 Section {
                     LabeledContent("YouTube API key", value: model.hasAPIKey ? "Added" : "Missing")

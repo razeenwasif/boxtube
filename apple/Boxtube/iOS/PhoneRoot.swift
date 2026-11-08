@@ -47,6 +47,7 @@ struct PhoneRoot: View {
             if let toast = model.toast { Toast(text: toast).padding(.top, 8) }
         }
         .onChange(of: model.player.state.time) { _, _ in model.tick(model.player.state) }
+        .onChange(of: model.player.state.isPlaying) { _, _ in model.tick(model.player.state) }
         .onAppear { live.attach(to: model) }
     }
 

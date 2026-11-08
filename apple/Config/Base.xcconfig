@@ -4,4 +4,6 @@ BOXTUBE_TEAM = C63K728GC6
 
 // Secrets live in Secrets.xcconfig (git-ignored). Copy Secrets.example.xcconfig to start.
 YOUTUBE_API_KEY =
+GOOGLE_CLIENT_ID =
+GOOGLE_CLIENT_SECRET =
 #include? "Secrets.xcconfig"

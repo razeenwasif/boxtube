@@ -4,6 +4,7 @@ import XCTest
 /// (set TEST_RUNNER_BOXTUBE_STEPS when calling xcodebuild). Each step is one of:
 ///   {"launch":true} {"activate":true} {"tap":"Accessibility label"} {"tapXY":[x,y]} {"swipe":"up|down|left|right"}
 ///   {"type":"text"} {"wait":seconds} {"shot":"name"} {"dump":true}
+///   {"drag":[x1,y1,x2,y2]} {"press":"label"} {"pressXY":[x,y]} {"home":true} {"lock":true}
 /// Screenshots and hierarchy dumps are saved as test attachments.
 final class DriverTests: XCTestCase {
     func testDrive() throws {
@@ -28,6 +29,28 @@ final class DriverTests: XCTestCase {
                 default: app.swipeRight()
                 }
             }
+            // Points, like tapXY: [x1, y1, x2, y2]. Starting at x≈1 is an edge swipe.
+            if let d = step["drag"] as? [Double], d.count == 4 {
+                let origin = app.coordinate(withNormalizedOffset: .zero)
+                origin.withOffset(CGVector(dx: d[0], dy: d[1]))
+                    .press(forDuration: 0.05, thenDragTo: origin.withOffset(CGVector(dx: d[2], dy: d[3])), withVelocity: .default, thenHoldForDuration: 0.1)
+            }
+            if let label = step["press"] as? String {
+                let element = app.descendants(matching: .any)[label].firstMatch
+                if element.waitForExistence(timeout: 5) { element.press(forDuration: 1.2) } else { attachText("missing-\(i)", "No element labelled \(label)") }
+            }
+            if let xy = step["pressXY"] as? [Double], xy.count == 2 {
+                app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: xy[0], dy: xy[1])).press(forDuration: 1.2)
+            }
+            if let scale = step["pinch"] as? Double { app.pinch(withScale: scale, velocity: scale < 1 ? -1 : 1) }
+            // Pinch on a labelled element: {"pinchOn":"Video player","scale":0.4}
+            if let label = step["pinchOn"] as? String {
+                let scale = step["scale"] as? Double ?? 0.4
+                let element = app.descendants(matching: .any)[label].firstMatch
+                if element.waitForExistence(timeout: 5) { element.pinch(withScale: scale, velocity: scale < 1 ? -1 : 1) } else { attachText("missing-\(i)", "No element labelled \(label)") }
+            }
+            if step["home"] != nil { XCUIDevice.shared.press(.home) }
+            if step["lock"] != nil { XCUIDevice.shared.perform(NSSelectorFromString("pressLockButton")) }
             if let text = step["type"] as? String { app.typeText(text) }
             if let seconds = step["wait"] as? Double { Thread.sleep(forTimeInterval: seconds) }
             if let name = step["shot"] as? String {

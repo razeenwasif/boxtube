@@ -17,6 +17,7 @@ struct WatchScreen: View {
     @State private var comment: YouTubeClient.TopComment?
     @State private var controlsVisible = true
     @State private var dragOffset: CGFloat = 0
+    @State private var pinching = false
     @State private var expanded = false
     @State private var showNotes = false
     @State private var disliked = false
@@ -87,7 +88,6 @@ struct WatchScreen: View {
             Color.black.opacity(controlsVisible ? 0.28 : 0.001)
                 .contentShape(Rectangle())
                 .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { controlsVisible.toggle() } }
-                .gesture(MagnifyGesture().onEnded { value in if value.magnification < 0.8 { model.showSkim = true } })
             if controlsVisible {
                 // top row
                 VStack {
@@ -149,11 +149,18 @@ struct WatchScreen: View {
         .background(.black)
         .background(alignment: .top) { Color.black.frame(height: 200).offset(y: -200).ignoresSafeArea() }
         .gesture(DragGesture().onChanged { g in
-            if g.translation.height > 0 { dragOffset = g.translation.height * 0.6 }
+            if !pinching, g.translation.height > 0 { dragOffset = g.translation.height * 0.6 }
         }.onEnded { g in
-            if g.translation.height > 120 { dismiss() }
+            if !pinching, g.translation.height > 120 { dismiss() }
             withAnimation(.snappy) { dragOffset = 0 }
         })
+        // Pinch in to Skim. Runs alongside the swipe-down drag, which stands down while two fingers pinch.
+        .simultaneousGesture(MagnifyGesture()
+            .onChanged { _ in if !pinching { pinching = true; withAnimation(.snappy) { dragOffset = 0 } } }
+            .onEnded { value in
+                pinching = false
+                if value.magnification < 0.8 { model.showSkim = true }
+            })
         .task(id: controlsVisible) {
             guard controlsVisible, model.player.state.isPlaying else { return }
             try? await Task.sleep(for: .seconds(3.5))

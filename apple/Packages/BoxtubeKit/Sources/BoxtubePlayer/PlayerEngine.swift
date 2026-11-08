@@ -54,6 +54,9 @@ public final class PlayerEngine: NSObject {
         webView.backgroundColor = .black
         webView.scrollView.isScrollEnabled = false
         webView.scrollView.contentInsetAdjustmentBehavior = .never
+        // Boxtube draws every control itself; touches must reach its SwiftUI gestures (tap, pinch to Skim,
+        // swipes in Shorts), not YouTube's own overlay inside the page.
+        webView.isUserInteractionEnabled = false
         #else
         webView.setValue(false, forKey: "drawsBackground")
         #endif
@@ -188,6 +191,7 @@ private struct Host: UIViewRepresentable {
         let container = UIView()
         container.backgroundColor = .black
         container.clipsToBounds = true
+        container.isUserInteractionEnabled = false
         if isOwner { attach(to: container) }
         return container
     }

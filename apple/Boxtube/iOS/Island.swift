@@ -112,9 +112,7 @@ struct Island: View {
                 case .subs: IconView(.subs, size: 22)
                 case .playlists: IconView(.playlists, size: 22)
                 case .you:
-                    Text("JD").font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
-                        .frame(width: 26, height: 26)
-                        .background(BX.violet, in: Circle())
+                    MyAvatar(size: 26)
                         .overlay(Circle().strokeBorder(active ? activeTint : .clear, lineWidth: 2))
                 }
                 if active {

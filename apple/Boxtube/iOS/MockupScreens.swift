@@ -493,10 +493,8 @@ struct ProfileScreen: View {
         ScrollView {
             VStack(spacing: 0) {
                 VStack(spacing: 0) {
-                    Text(initials)
-                        .font(BX.display(30, .bold)).foregroundStyle(.white)
-                        .frame(width: 80, height: 80)
-                        .background(BX.violet, in: Circle())
+                    ProfileAvatar(size: 80, initials: initials, photo: model.account?.pictureURL)
+                        .font(BX.display(30, .bold))
                         .padding(4)
                         .overlay(Circle().strokeBorder(BX.coral, lineWidth: 2))
                         .accessibilityHidden(true)
@@ -510,6 +508,25 @@ struct ProfileScreen: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.top, 14)
+
+                if model.googleConfigured && model.account == nil {
+                    Button { Task { await model.signInWithGoogle() } } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "person.crop.circle.badge.plus").font(.system(size: 22)).foregroundStyle(BX.coralText)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(model.isSigningIn ? "Waiting for Google…" : "Sign in with Google").font(.system(size: 15, weight: .semibold))
+                                Text("Bring in your subscriptions, playlists and likes").font(.system(size: 12.5)).foregroundStyle(BX.muted)
+                            }
+                            Spacer()
+                            if model.isSigningIn { ProgressView() } else { IconView(.chevronRight, size: 16).foregroundStyle(BX.muted) }
+                        }
+                        .padding(14)
+                        .background(BX.surface, in: .rect(cornerRadius: 16))
+                        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(BX.line))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 16).padding(.top, 18)
+                }
 
                 HStack(spacing: 10) {
                     stat(Format.minutes(stats?.watchedThisWeek ?? 0), "Watched this week")

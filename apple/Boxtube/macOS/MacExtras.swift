@@ -145,6 +145,11 @@ struct MacSettings: View {
                 ForEach([1, 2, 4, 8], id: \.self) { Text("\($0) week\($0 == 1 ? "" : "s")").tag($0) }
             }
             LabeledContent("YouTube API key", value: model.hasAPIKey ? "Added" : "Missing (apple/Config/Secrets.xcconfig)")
+            Section {
+                GoogleAccountSection()
+            } header: { Text("YouTube account") } footer: {
+                Text("Read-only: Boxtube copies your subscriptions, playlists and liked videos. Changes you make here stay in Boxtube.")
+            }
             Button("Clear watch history", role: .destructive) { Task { try? await model.store.clearHistory() } }
         }
         .formStyle(.grouped)

@@ -4,12 +4,14 @@ public enum BoxtubeError: LocalizedError, Sendable {
     case missingAPIKey
     case http(Int, String)
     case decoding(String)
+    case notSignedIn(String)
 
     public var errorDescription: String? {
         switch self {
         case .missingAPIKey: "Add a YouTube Data API key to search and load durations."
         case .http(let code, let message): "YouTube returned \(code): \(message)"
         case .decoding(let what): "Couldn't read \(what)."
+        case .notSignedIn(let message): message
         }
     }
 }
@@ -32,14 +34,14 @@ public actor YouTubeClient {
 
     // MARK: Endpoints
 
-    public func videos(ids: [String]) async throws -> [Video] {
+    public func videos(ids: [String], token: String? = nil) async throws -> [Video] {
         var result: [Video] = []
         for chunk in ids.uniqued().chunked(50) {
             let page: Page<VideoResource> = try await get("videos", [
                 "part": "snippet,contentDetails,statistics,liveStreamingDetails",
                 "id": chunk.joined(separator: ","),
                 "maxResults": "50",
-            ])
+            ], token: token)
             result += page.items.map(\.video)
         }
         return result
@@ -100,14 +102,66 @@ public actor YouTubeClient {
         return page.items.map(\.contentDetails.videoId)
     }
 
+    // MARK: Your account (OAuth, read-only)
+
+    public struct AccountPlaylist: Sendable, Hashable {
+        public var id: String
+        public var title: String
+        public var isPrivate: Bool
+    }
+
+    /// Channels you subscribe to on YouTube (1 unit per 50).
+    public func mySubscriptions(token: String) async throws -> [Channel] {
+        let items: [SubscriptionResource] = try await all("subscriptions", ["part": "snippet", "mine": "true", "order": "alphabetical"], token: token, limit: 1000)
+        return items.map { Channel(id: $0.snippet.resourceId.channelId ?? "", title: $0.snippet.title, avatarURL: $0.snippet.thumbnails.avatar) }
+            .filter { !$0.id.isEmpty }
+    }
+
+    /// Playlists you own (1 unit per 50).
+    public func myPlaylists(token: String) async throws -> [AccountPlaylist] {
+        let items: [PlaylistResource] = try await all("playlists", ["part": "snippet,status", "mine": "true"], token: token, limit: 200)
+        return items.map { AccountPlaylist(id: $0.id, title: $0.snippet.title, isPrivate: $0.status?.privacyStatus != "public") }
+    }
+
+    /// Video ids in a playlist, in order (1 unit per 50).
+    public func playlistVideoIds(_ playlistId: String, token: String, limit: Int = 200) async throws -> [String] {
+        let items: [PlaylistItemResource] = try await all("playlistItems", ["part": "contentDetails", "playlistId": playlistId], token: token, limit: limit)
+        return items.map(\.contentDetails.videoId)
+    }
+
+    /// Videos you've liked, newest first (1 unit per 50).
+    public func myLikedVideos(token: String, limit: Int = 200) async throws -> [Video] {
+        let items: [VideoResource] = try await all("videos", ["part": "snippet,contentDetails,statistics", "myRating": "like"], token: token, limit: limit)
+        return items.map(\.video)
+    }
+
+    private func all<Item: Decodable>(_ path: String, _ query: [String: String], token: String, limit: Int) async throws -> [Item] {
+        var items: [Item] = []
+        var pageToken: String?
+        repeat {
+            var q = query
+            q["maxResults"] = "50"
+            if let pageToken { q["pageToken"] = pageToken }
+            let page: Page<Item> = try await get(path, q, token: token)
+            items += page.items
+            pageToken = page.nextPageToken
+        } while pageToken != nil && items.count < limit
+        return Array(items.prefix(limit))
+    }
+
     // MARK: Transport
 
-    private func get<T: Decodable>(_ path: String, _ query: [String: String]) async throws -> T {
-        guard let apiKey else { throw BoxtubeError.missingAPIKey }
+    private func get<T: Decodable>(_ path: String, _ query: [String: String], token: String? = nil) async throws -> T {
         var components = URLComponents(url: base.appending(path: path), resolvingAgainstBaseURL: false)!
-        components.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) } + [URLQueryItem(name: "key", value: apiKey)]
+        var items = query.map { URLQueryItem(name: $0.key, value: $0.value) }
+        if token == nil {
+            guard let apiKey else { throw BoxtubeError.missingAPIKey }
+            items.append(URLQueryItem(name: "key", value: apiKey))
+        }
+        components.queryItems = items
         var request = URLRequest(url: components.url!)
-        if let bundle = Bundle.main.bundleIdentifier { request.setValue(bundle, forHTTPHeaderField: "X-Ios-Bundle-Identifier") }
+        if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        else if let bundle = Bundle.main.bundleIdentifier { request.setValue(bundle, forHTTPHeaderField: "X-Ios-Bundle-Identifier") }
         let (data, response) = try await session.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {
@@ -131,7 +185,7 @@ public actor YouTubeClient {
 // MARK: - Wire types
 
 private struct APIErrorEnvelope: Decodable { struct E: Decodable { var message: String }; var error: E }
-private struct Page<Item: Decodable>: Decodable { var items: [Item] }
+private struct Page<Item: Decodable>: Decodable { var items: [Item]; var nextPageToken: String? }
 
 private struct Thumbs: Decodable {
     struct T: Decodable { var url: URL }
@@ -186,6 +240,18 @@ private struct CommentThreadResource: Decodable {
 private struct VideoStatsOnly: Decodable {
     struct Stats: Decodable { var commentCount: String? }
     var statistics: Stats
+}
+
+private struct SubscriptionResource: Decodable {
+    struct Snippet: Decodable { var title: String; var thumbnails: Thumbs; var resourceId: Resource }
+    struct Resource: Decodable { var channelId: String? }
+    var snippet: Snippet
+}
+
+private struct PlaylistResource: Decodable {
+    struct Snippet: Decodable { var title: String }
+    struct Status: Decodable { var privacyStatus: String? }
+    var id: String; var snippet: Snippet; var status: Status?
 }
 
 private struct PlaylistItemResource: Decodable {

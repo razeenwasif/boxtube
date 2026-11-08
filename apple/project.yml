@@ -62,6 +62,8 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         "ENABLE_APP_SANDBOX[sdk=macosx*]": YES
         "ENABLE_OUTGOING_NETWORK_CONNECTIONS[sdk=macosx*]": YES
+        # Google sign-in receives its redirect on a loopback port (127.0.0.1).
+        "ENABLE_INCOMING_NETWORK_CONNECTIONS[sdk=macosx*]": YES
         "ENABLE_USER_SELECTED_FILES[sdk=macosx*]": readwrite
         ENABLE_HARDENED_RUNTIME: YES
   BoxtubeWidgets:

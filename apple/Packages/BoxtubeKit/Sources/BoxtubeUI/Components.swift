@@ -136,13 +136,26 @@ public struct ChannelAvatar: View {
 public struct ProfileAvatar: View {
     var size: CGFloat
     var ring: Color?
-    public init(size: CGFloat = 32, ring: Color? = nil) { self.size = size; self.ring = ring }
+    var initials: String
+    var photo: URL?
+    public init(size: CGFloat = 32, ring: Color? = nil, initials: String = "JD", photo: URL? = nil) {
+        self.size = size; self.ring = ring; self.initials = initials; self.photo = photo
+    }
     public var body: some View {
-        Text("JD")
+        Text(initials)
             .font(.system(size: size * 0.36, weight: .bold))
             .foregroundStyle(.white)
             .frame(width: size, height: size)
             .background(BX.violet, in: Circle())
+            .overlay {
+                if let photo {
+                    LazyImage(url: photo) { state in
+                        if let image = state.image { image.resizable().aspectRatio(contentMode: .fill) }
+                    }
+                    .processors([.resize(width: size * 3)])
+                    .clipShape(Circle())
+                }
+            }
             .overlay { if let ring { Circle().strokeBorder(ring, lineWidth: 2) } }
             .accessibilityLabel("Your profile")
     }

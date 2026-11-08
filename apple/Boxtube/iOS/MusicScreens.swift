@@ -374,7 +374,7 @@ struct MusicLibraryScreen: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 12) {
-                    ProfileAvatar(size: 34)
+                    MyAvatar(size: 34)
                     LargeTitle("Your library", size: 26)
                     Spacer()
                     Button { withAnimation(.smooth) { model.showCommandPanel = true } } label: { IconView(.search, size: 21, lineWidth: 2).frame(width: 40, height: 40) }

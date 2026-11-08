@@ -131,6 +131,37 @@ public actor FeedService {
         return try? await client.topComment(videoId: videoId)
     }
 
+    // MARK: Your YouTube account
+
+    public struct ImportReport: Sendable {
+        public var subscriptions = 0
+        public var playlists = 0
+        public var liked = 0
+    }
+
+    /// Copies subscriptions, playlists and liked videos from YouTube into the library (about 10–30 quota units).
+    public func importAccount(token: String) async throws -> ImportReport {
+        async let subsTask = client.mySubscriptions(token: token)
+        async let listsTask = client.myPlaylists(token: token)
+        async let likedTask = client.myLikedVideos(token: token)
+        let (subs, lists, liked) = try await (subsTask, listsTask, likedTask)
+
+        var playlistItems: [(YouTubeClient.AccountPlaylist, [String])] = []
+        for list in lists {
+            let ids = (try? await client.playlistVideoIds(list.id, token: token)) ?? []
+            playlistItems.append((list, ids))
+        }
+        // Playlist rows only show videos the store knows about.
+        let known = Set((try? await store.read { db in try String.fetchAll(db, sql: "SELECT id FROM video") }) ?? [])
+        let missing = playlistItems.flatMap(\.1).filter { !known.contains($0) }
+        let details = (try? await client.videos(ids: missing, token: token)) ?? []
+
+        try await store.upsert(videos: liked + details)
+        try await store.importAccount(subscriptions: subs, playlists: playlistItems, likedIds: liked.map(\.id),
+                                      starterIds: Set(Seeds.channels.map(\.id)))
+        return ImportReport(subscriptions: subs.count, playlists: lists.count, liked: liked.count)
+    }
+
     // MARK: First launch
 
     public func seedIfNeeded() async {

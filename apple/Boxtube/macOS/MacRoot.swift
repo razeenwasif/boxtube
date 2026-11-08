@@ -65,6 +65,7 @@ struct MacRoot: View {
         }
         .sheet(isPresented: $model.showTimeBox) { TimeBoxView().frame(width: 460, height: 760) }
         .onChange(of: model.player.state.time) { _, _ in model.tick(model.player.state) }
+        .onChange(of: model.player.state.isPlaying) { _, _ in model.tick(model.player.state) }
         .onChange(of: section) { _, s in
             model.watching = nil
             model.paths[.home] = []
@@ -280,10 +281,10 @@ struct MacSidebar: View {
         .scrollIndicators(.never)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             HStack(spacing: 10) {
-                ProfileAvatar(size: 32)
+                MyAvatar(size: 32)
                 VStack(alignment: .leading, spacing: 0) {
                     Text(model.displayName).font(.system(size: 13, weight: .semibold))
-                    Text(model.calmMode ? "Calm mode on" : "@\(model.displayName.lowercased().replacingOccurrences(of: " ", with: ""))")
+                    Text(model.calmMode ? "Calm mode on" : (model.account?.email ?? "@\(model.displayName.lowercased().replacingOccurrences(of: " ", with: ""))"))
                         .font(.system(size: 12)).foregroundStyle(model.calmMode ? BX.sageText : BX.dim)
                 }
                 Spacer()
@@ -385,9 +386,7 @@ struct MacRail: View {
             .accessibilityLabel("Notes")
             .accessibilityAddTraits(model.showNotes ? .isSelected : [])
             Spacer()
-            Text(initials).font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
-                .frame(width: 32, height: 32).background(BX.violet, in: Circle())
-                .accessibilityLabel(model.displayName)
+            MyAvatar(size: 32).accessibilityLabel(model.displayName)
         }
         .padding(.top, 16).padding(.bottom, 16)
         .frame(width: 64)
@@ -404,10 +403,6 @@ struct MacRail: View {
         section = s
     }
 
-    private var initials: String {
-        let l = model.displayName.split(separator: " ").prefix(2).compactMap(\.first).map(String.init).joined()
-        return l.isEmpty ? "JD" : l.uppercased()
-    }
 
     private func item(_ icon: BXIcon, _ label: String, _ fg: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {

@@ -264,6 +264,39 @@ public final class Store: Sendable {
     }
 
     @discardableResult
+    /// Brings in what's on your YouTube account. Subscriptions and likes are added; your playlists are
+    /// mirrored (same ids, items replaced). Starter channels you don't follow on YouTube are dropped.
+    public func importAccount(subscriptions: [Channel], playlists: [(YouTubeClient.AccountPlaylist, [String])],
+                              likedIds: [String], starterIds: Set<String>) async throws {
+        try await writer.write { db in
+            let subscribed = Set(subscriptions.map(\.id))
+            for channel in subscriptions {
+                var c = try Channel.fetchOne(db, key: channel.id) ?? channel
+                c.title = channel.title
+                c.avatarURL = channel.avatarURL ?? c.avatarURL
+                c.isSubscribed = true
+                c.subscribedAt = c.subscribedAt ?? .now
+                try c.save(db)
+            }
+            for id in starterIds.subtracting(subscribed) {
+                try db.execute(sql: "UPDATE channel SET isSubscribed = 0 WHERE id = ?", arguments: [id])
+            }
+            for (remote, videoIds) in playlists {
+                let existing = try Playlist.fetchOne(db, key: remote.id)
+                try Playlist(id: remote.id, title: remote.title, isMusic: existing?.isMusic ?? false, isPrivate: remote.isPrivate,
+                             createdAt: existing?.createdAt ?? .now, updatedAt: .now).save(db)
+                try db.execute(sql: "DELETE FROM playlistItem WHERE playlistId = ?", arguments: [remote.id])
+                for (i, vid) in videoIds.uniqued().enumerated() {
+                    try PlaylistItem(playlistId: remote.id, videoId: vid, position: i).insert(db, onConflict: .ignore)
+                }
+            }
+            let now = Date.now
+            for (i, vid) in likedIds.enumerated() where try !LikedVideo.exists(db, key: vid) {
+                try LikedVideo(videoId: vid, likedAt: now.addingTimeInterval(-Double(i))).insert(db)
+            }
+        }
+    }
+
     public func addNote(videoId: String, time: Double, text: String) async throws -> Note {
         try await writer.write { db in
             var note = Note(videoId: videoId, time: time, text: text)

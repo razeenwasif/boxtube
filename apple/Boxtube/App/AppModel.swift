@@ -56,6 +56,12 @@ final class AppModel {
     let feed: FeedService
     let player: PlayerEngine
     let hasAPIKey: Bool
+    let google: GoogleAuth
+    let googleConfigured: Bool
+    var account: GoogleAccount?
+    var isSigningIn = false
+    var isImporting = false
+    var lastImport: Date?
 
     // Settings
     var calmMode: Bool { didSet { defaults.set(calmMode, forKey: "calmMode") } }
@@ -100,6 +106,7 @@ final class AppModel {
     // Hooks set by platform code
     var onPlaybackChanged: ((Video?, PlayerEngine.State) -> Void)?
 
+    @ObservationIgnored private lazy var nowPlaying = NowPlaying(model: self)
     private let defaults = UserDefaults.standard
     private var observers: [Task<Void, Never>] = []
 
@@ -111,6 +118,10 @@ final class AppModel {
         self.store = store
         self.feed = FeedService(store: store, client: client)
         self.hasAPIKey = client.hasKey
+        let google = GoogleAuth(clientID: Bundle.main.object(forInfoDictionaryKey: "GoogleClientID") as? String,
+                                clientSecret: Bundle.main.object(forInfoDictionaryKey: "GoogleClientSecret") as? String)
+        self.google = google
+        self.googleConfigured = google.isConfigured
         self.player = PlayerEngine()
         calmMode = defaults.bool(forKey: "calmMode")
         mode = AppMode(rawValue: defaults.string(forKey: "mode") ?? "") ?? .videos
@@ -136,6 +147,7 @@ final class AppModel {
     func start() async {
         WatchTogether.shared.configure(model: self)
         await feed.seedIfNeeded()
+        account = await google.account
         _ = try? await store.purgeWatchLater(olderThan: clearAfterWeeks)
         observeLibrary()
         await refresh()
@@ -204,6 +216,7 @@ final class AppModel {
 
     /// Called from the time observer: stops a time-box chapter at its end.
     func tick(_ state: PlayerEngine.State) {
+        nowPlaying.update(video: player.video, state: state)
         if let end = activeSegmentEnd, state.time >= end - 0.3 { advanceQueue() }
         WatchTogether.shared.localStateChanged(isPlaying: state.isPlaying, time: state.time)
     }
@@ -264,10 +277,10 @@ final class AppModel {
         recentSearches = ([t] + recentSearches.filter { $0.caseInsensitiveCompare(t) != .orderedSame }).prefix(8).map { $0 }
     }
 
-    func flash(_ message: String) {
+    func flash(_ message: String, seconds: Double = 2) {
         withAnimation(.snappy) { toast = message }
         Task {
-            try? await Task.sleep(for: .seconds(2))
+            try? await Task.sleep(for: .seconds(seconds))
             withAnimation(.snappy) { if toast == message { toast = nil } }
         }
     }
