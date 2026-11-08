@@ -1,6 +1,17 @@
 import SwiftUI
+import Nuke
 import NukeUI
 import BoxtubeCore
+
+/// Images: a lasting on-disk cache (thumbnails and avatars survive relaunches regardless of HTTP headers).
+public enum BoxtubeImages {
+    nonisolated(unsafe) private static var configured = false
+    public static func configure() {
+        guard !configured else { return }
+        configured = true
+        ImagePipeline.shared = ImagePipeline(configuration: .withDataCache(name: "com.razeenwasif.boxtube.images", sizeLimit: 400 * 1024 * 1024))
+    }
+}
 
 // MARK: - Thumbnails
 
@@ -121,6 +132,7 @@ public struct ChannelAvatar: View {
                     if let image = state.image { image.resizable().aspectRatio(contentMode: .fill) }
                 }
                 .processors([.resize(width: size * 3)])
+                .priority(.high)
             }
         }
         .frame(width: size, height: size)

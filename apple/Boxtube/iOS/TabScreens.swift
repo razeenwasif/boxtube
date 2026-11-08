@@ -90,17 +90,25 @@ struct PlaylistDetailScreen: View {
                     Text("\(videos.count) videos · \(Format.minutes(Double(videos.compactMap(\.durationSeconds).reduce(0, +))))").font(.system(size: 13)).foregroundStyle(BX.muted)
                 }
                 HStack(spacing: 10) {
-                    Button { if let f = videos.first { model.player.queue = Array(videos.dropFirst()); model.open(f) } } label: {
+                    Button { model.play(list: videos, from: playlist?.title ?? "Playlist", playlistId: playlistId) } label: {
                         Label("Play all", systemImage: "play.fill").font(.system(size: 15, weight: .bold)).foregroundStyle(BX.coralInk)
                             .frame(maxWidth: .infinity).frame(height: 46).background(BX.coral, in: Capsule())
                     }
-                    Button { let s = videos.shuffled(); if let f = s.first { model.player.queue = Array(s.dropFirst()); model.open(f) } } label: {
+                    Button { model.play(list: videos.shuffled(), from: playlist?.title ?? "Playlist", playlistId: playlistId) } label: {
                         Label("Shuffle", systemImage: "shuffle").font(.system(size: 15, weight: .bold))
                             .frame(maxWidth: .infinity).frame(height: 46).background(BX.surface3, in: Capsule())
                     }
                 }
                 .buttonStyle(.plain)
                 .disabled(videos.isEmpty)
+                if let playlist {
+                    Toggle(isOn: Binding(get: { playlist.isMusic }, set: { on in Task { try? await model.store.setPlaylistMusic(playlistId, on) } })) {
+                        Label("Show in Music", systemImage: "music.note").font(.system(size: 15, weight: .semibold))
+                    }
+                    .tint(BX.coral)
+                    .padding(.horizontal, 14).frame(height: 48)
+                    .background(BX.surface, in: .rect(cornerRadius: 14))
+                }
                 ForEach(videos) { v in
                     VideoRow(video: v)
                         .swipeActions { Button(role: .destructive) { Task { try? await model.store.remove(videoId: v.id, fromPlaylist: playlistId) } } label: { Label("Remove", systemImage: "trash") } }

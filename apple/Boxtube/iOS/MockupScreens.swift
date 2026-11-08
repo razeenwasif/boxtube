@@ -407,6 +407,9 @@ struct PlaylistsScreen: View {
                         Button { model.push(.playlist(p.playlist.id)) } label: { StackedCover(summary: p) }
                             .buttonStyle(.plain)
                             .contextMenu {
+                                Button { Task { try? await model.store.setPlaylistMusic(p.playlist.id, !p.playlist.isMusic) } } label: {
+                                    Label(p.playlist.isMusic ? "Remove from Music" : "Show in Music", systemImage: p.playlist.isMusic ? "music.note.slash" : "music.note")
+                                }
                                 Button(role: .destructive) { Task { try? await model.store.deletePlaylist(p.playlist.id) } } label: { Label("Delete playlist", systemImage: "trash") }
                             }
                     }

@@ -38,6 +38,7 @@ struct MacVideoGrid: View {
     @State private var videos: [Video] = []
     @State private var progress: [String: Double] = [:]
     @State private var name: String?
+    @State private var playlist: Playlist?
 
     var body: some View {
         ScrollView {
@@ -45,6 +46,12 @@ struct MacVideoGrid: View {
                 HStack {
                     LargeTitle(name ?? title)
                     Spacer()
+                    if let playlist {
+                        Toggle("Show in Music", isOn: Binding(get: { playlist.isMusic }, set: { on in Task { try? await model.store.setPlaylistMusic(playlist.id, on) } }))
+                            .toggleStyle(.switch).controlSize(.small).tint(BX.coral)
+                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(BX.text2)
+                            .padding(.trailing, 8)
+                    }
                     if !videos.isEmpty {
                         Button { model.play(list: videos, from: name ?? title, playlistId: playlistId) } label: {
                             Label("Play all", systemImage: "play.fill").font(.system(size: 13.5, weight: .bold)).foregroundStyle(BX.coralInk)
@@ -64,7 +71,7 @@ struct MacVideoGrid: View {
         }
         .observing(model.store, id: title + (playlistId ?? ""), fetch) { videos = $0 }
         .observing(model.store, { db in try Q.progress(db) }) { progress = $0 }
-        .observing(model.store, id: playlistId ?? "", { [playlistId] db in try playlistId.flatMap { try Playlist.fetchOne(db, key: $0)?.title } }) { name = $0 }
+        .observing(model.store, id: playlistId ?? "", { [playlistId] db in try playlistId.flatMap { try Playlist.fetchOne(db, key: $0) } }) { playlist = $0; name = $0?.title }
     }
 }
 
@@ -159,7 +166,10 @@ struct MacPlaylists: View {
                     ForEach(playlists) { p in
                         Button { model.push(.playlist(p.id)) } label: { StackedCoverMac(summary: p) }
                             .buttonStyle(.plain)
-                            .contextMenu { Button("Delete", role: .destructive) { Task { try? await model.store.deletePlaylist(p.id) } } }
+                            .contextMenu {
+                                Button(p.playlist.isMusic ? "Remove from Music" : "Show in Music") { Task { try? await model.store.setPlaylistMusic(p.id, !p.playlist.isMusic) } }
+                                Button("Delete", role: .destructive) { Task { try? await model.store.deletePlaylist(p.id) } }
+                            }
                     }
                 }
             }

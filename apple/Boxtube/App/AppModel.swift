@@ -112,6 +112,7 @@ final class AppModel {
 
     init() {
         BoxtubeFonts.register()
+        BoxtubeImages.configure()
         let key = Bundle.main.object(forInfoDictionaryKey: "YouTubeAPIKey") as? String
         let store = (try? Store.live()) ?? (try! Store.inMemory())
         let client = YouTubeClient(apiKey: key)

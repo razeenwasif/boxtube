@@ -44,7 +44,12 @@ struct MacRoot: View {
                 if chrome != .music, !(chrome == .rail && model.showNotes) { topBar(chrome) }
                 NavigationStack(path: Binding(get: { model.paths[.home] ?? [] }, set: { model.paths[.home] = $0 })) {
                     detail
-                        .navigationDestination(for: Route.self) { MacRouteScreen(route: $0).navigationBarBackButtonHidden(true) }
+                        .navigationDestination(for: Route.self) {
+                            // Opaque, or the screen underneath shows through on macOS.
+                            MacRouteScreen(route: $0).navigationBarBackButtonHidden(true)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .background(background)
+                        }
                 }
             }
         }

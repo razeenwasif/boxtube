@@ -97,6 +97,9 @@ public final class Store: Sendable {
                 t.primaryKey(["key", "videoId"])
             }
         }
+        m.registerMigration("v2-playlist-music-choice") { db in
+            try db.alter(table: "playlist") { t in t.add(column: "musicChosen", .boolean).notNull().defaults(to: false) }
+        }
         return m
     }
 
@@ -245,6 +248,13 @@ public final class Store: Sendable {
         return playlist
     }
 
+    /// "Show in Music": puts a playlist in Music mode's library (or takes it out) and remembers the choice.
+    public func setPlaylistMusic(_ id: String, _ music: Bool) async throws {
+        try await writer.write { db in
+            try db.execute(sql: "UPDATE playlist SET isMusic = ?, musicChosen = 1 WHERE id = ?", arguments: [music, id])
+        }
+    }
+
     public func deletePlaylist(_ id: String) async throws {
         try await writer.write { db in _ = try Playlist.deleteOne(db, key: id) }
     }
@@ -283,11 +293,23 @@ public final class Store: Sendable {
             }
             for (remote, videoIds) in playlists {
                 let existing = try Playlist.fetchOne(db, key: remote.id)
-                try Playlist(id: remote.id, title: remote.title, isMusic: existing?.isMusic ?? false, isPrivate: remote.isPrivate,
-                             createdAt: existing?.createdAt ?? .now, updatedAt: .now).save(db)
+                var playlist = Playlist(id: remote.id, title: remote.title, isMusic: existing?.isMusic ?? false, isPrivate: remote.isPrivate,
+                                        createdAt: existing?.createdAt ?? .now, updatedAt: .now, musicChosen: existing?.musicChosen ?? false)
+                try playlist.save(db)
                 try db.execute(sql: "DELETE FROM playlistItem WHERE playlistId = ?", arguments: [remote.id])
                 for (i, vid) in videoIds.uniqued().enumerated() {
                     try PlaylistItem(playlistId: remote.id, videoId: vid, position: i).insert(db, onConflict: .ignore)
+                }
+                // YouTube doesn't mark music playlists, so guess from the videos: mostly Music category → Music mode.
+                if !playlist.musicChosen {
+                    let row = try Row.fetchOne(db, sql: """
+                        SELECT COUNT(*) AS total, SUM(CASE WHEN video.categoryId = '10' THEN 1 ELSE 0 END) AS music
+                        FROM playlistItem JOIN video ON video.id = playlistItem.videoId WHERE playlistId = ?
+                        """, arguments: [remote.id])
+                    let total: Int = row?["total"] ?? 0
+                    let music: Int = row?["music"] ?? 0
+                    playlist.isMusic = total > 0 && Double(music) / Double(total) >= 0.5
+                    try playlist.update(db)
                 }
             }
             let now = Date.now
@@ -414,7 +436,8 @@ public enum Q {
         var request = Playlist.order(Column("updatedAt").desc)
         if let music { request = request.filter(Column("isMusic") == music) }
         return try request.fetchAll(db).map { p in
-            let count = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM playlistItem WHERE playlistId = ?", arguments: [p.id]) ?? 0
+            // Only videos Boxtube can show (deleted or private ones have no details), so the count matches the list.
+            let count = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM playlistItem JOIN video ON video.id = playlistItem.videoId WHERE playlistId = ?", arguments: [p.id]) ?? 0
             let cover = try Video.fetchOne(db, sql: """
                 SELECT video.* FROM playlistItem JOIN video ON video.id = playlistItem.videoId
                 WHERE playlistId = ? ORDER BY position LIMIT 1

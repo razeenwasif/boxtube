@@ -86,11 +86,13 @@ public struct Playlist: Codable, Hashable, Identifiable, Sendable, FetchableReco
     public var isPrivate: Bool
     public var createdAt: Date
     public var updatedAt: Date
+    /// True once you've set "Show in Music" yourself, so imports stop guessing.
+    public var musicChosen: Bool
 
     public init(id: String = UUID().uuidString, title: String, isMusic: Bool = false, isPrivate: Bool = true,
-                createdAt: Date = .now, updatedAt: Date = .now) {
+                createdAt: Date = .now, updatedAt: Date = .now, musicChosen: Bool = false) {
         self.id = id; self.title = title; self.isMusic = isMusic; self.isPrivate = isPrivate
-        self.createdAt = createdAt; self.updatedAt = updatedAt
+        self.createdAt = createdAt; self.updatedAt = updatedAt; self.musicChosen = musicChosen
     }
 }
 

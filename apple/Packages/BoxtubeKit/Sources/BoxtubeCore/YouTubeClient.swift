@@ -190,7 +190,8 @@ private struct Page<Item: Decodable>: Decodable { var items: [Item]; var nextPag
 private struct Thumbs: Decodable {
     struct T: Decodable { var url: URL }
     var `default`: T?; var medium: T?; var high: T?; var standard: T?; var maxres: T?
-    var best: URL? { (maxres ?? standard ?? high ?? medium ?? `default`)?.url }
+    /// Card-sized (640 px) first: full 1280 px images only for hero cards, which ask for them directly.
+    var best: URL? { (standard ?? high ?? maxres ?? medium ?? `default`)?.url }
     var avatar: URL? { (high ?? medium ?? `default`)?.url }
 }
 
