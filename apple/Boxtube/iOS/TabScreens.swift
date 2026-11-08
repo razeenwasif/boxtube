@@ -291,6 +291,17 @@ struct ChannelScreen: View {
                             .background(channel.isSubscribed ? BX.surface3 : BX.text, in: Capsule())
                     }
                     .buttonStyle(.plain)
+                    if channel.isSubscribed {
+                        Toggle(isOn: Binding(get: { channel.isMusic }, set: { on in Task { try? await model.store.setChannelMusic(channel.id, on) } })) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Label("Show in Music", systemImage: "music.note").font(.system(size: 15, weight: .semibold))
+                                Text("Appears under Artists instead of your Videos feed").font(.system(size: 12)).foregroundStyle(BX.muted)
+                            }
+                        }
+                        .tint(BX.coral)
+                        .padding(.horizontal, 14).padding(.vertical, 10)
+                        .background(BX.surface, in: .rect(cornerRadius: 14))
+                    }
                 }
                 ForEach(videos) { VideoRow(video: $0) }
             }

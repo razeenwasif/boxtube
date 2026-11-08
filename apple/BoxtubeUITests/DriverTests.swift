@@ -49,6 +49,15 @@ final class DriverTests: XCTestCase {
                 let element = app.descendants(matching: .any)[label].firstMatch
                 if element.waitForExistence(timeout: 5) { element.pinch(withScale: scale, velocity: scale < 1 ? -1 : 1) } else { attachText("missing-\(i)", "No element labelled \(label)") }
             }
+            // Taps the Home Screen (widgets, icons) rather than the app: {"springTapXY":[x,y]}
+            if let xy = step["springTapXY"] as? [Double], xy.count == 2 {
+                let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+                springboard.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: xy[0], dy: xy[1])).tap()
+            }
+            if let dir = step["springSwipe"] as? String {
+                let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+                dir == "left" ? springboard.swipeLeft() : springboard.swipeRight()
+            }
             if step["home"] != nil { XCUIDevice.shared.press(.home) }
             if step["lock"] != nil { XCUIDevice.shared.perform(NSSelectorFromString("pressLockButton")) }
             if let text = step["type"] as? String { app.typeText(text) }

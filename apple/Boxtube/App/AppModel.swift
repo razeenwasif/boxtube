@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(iOS)
+import WidgetKit
+#endif
 import BoxtubeCore
 import BoxtubePlayer
 import BoxtubeUI
@@ -148,6 +151,9 @@ final class AppModel {
     func start() async {
         WatchTogether.shared.configure(model: self)
         await feed.seedIfNeeded()
+        #if os(iOS)
+        WidgetCenter.shared.reloadAllTimelines() // so widgets redraw after an app update
+        #endif
         account = await google.account
         _ = try? await store.purgeWatchLater(olderThan: clearAfterWeeks)
         observeLibrary()

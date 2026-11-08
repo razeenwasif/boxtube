@@ -100,6 +100,9 @@ public final class Store: Sendable {
         m.registerMigration("v2-playlist-music-choice") { db in
             try db.alter(table: "playlist") { t in t.add(column: "musicChosen", .boolean).notNull().defaults(to: false) }
         }
+        m.registerMigration("v3-channel-music-choice") { db in
+            try db.alter(table: "channel") { t in t.add(column: "musicChosen", .boolean).notNull().defaults(to: false) }
+        }
         return m
     }
 
@@ -246,6 +249,29 @@ public final class Store: Sendable {
         let playlist = Playlist(title: title, isMusic: music)
         try await writer.write { db in try playlist.insert(db) }
         return playlist
+    }
+
+    /// "Show in Music" for a channel: moves it between the Videos feed and Music's artists, and remembers the choice.
+    public func setChannelMusic(_ id: String, _ music: Bool) async throws {
+        try await writer.write { db in
+            try db.execute(sql: "UPDATE channel SET isMusic = ?, musicChosen = 1 WHERE id = ?", arguments: [music, id])
+        }
+    }
+
+    /// Flags subscribed channels that are clearly music artists: YouTube's "- Topic" and VEVO channels, or
+    /// channels whose known videos are at least 70% Music category (3+ videos). Never overrides your choice.
+    @discardableResult
+    public func detectMusicChannels() async throws -> Int {
+        try await writer.write { db in
+            try db.execute(sql: """
+                UPDATE channel SET isMusic = 1
+                WHERE isSubscribed = 1 AND isMusic = 0 AND musicChosen = 0 AND (
+                    title LIKE '% - Topic' OR title LIKE '%VEVO' OR id IN (
+                        SELECT channelId FROM video WHERE categoryId IS NOT NULL GROUP BY channelId
+                        HAVING COUNT(*) >= 3 AND SUM(CASE WHEN categoryId = '10' THEN 1 ELSE 0 END) * 1.0 / COUNT(*) >= 0.7))
+                """)
+            return db.changesCount
+        }
     }
 
     /// "Show in Music": puts a playlist in Music mode's library (or takes it out) and remembers the choice.

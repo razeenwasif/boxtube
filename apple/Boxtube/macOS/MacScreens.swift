@@ -291,6 +291,13 @@ struct MacChannel: View {
                     }
                     Spacer()
                     if let channel {
+                        if channel.isSubscribed {
+                            Toggle("Show in Music", isOn: Binding(get: { channel.isMusic }, set: { on in Task { try? await model.store.setChannelMusic(channel.id, on) } }))
+                                .toggleStyle(.switch).controlSize(.small).tint(BX.coral)
+                                .font(.system(size: 13, weight: .semibold)).foregroundStyle(BX.text2)
+                                .padding(.trailing, 8)
+                                .help("Music channels appear under Artists in Music mode instead of the Videos feed")
+                        }
                         Button(channel.isSubscribed ? "Subscribed" : "Subscribe") { channel.isSubscribed ? model.unsubscribe(channel.id) : model.subscribe(channel) }
                             .buttonStyle(.borderedProminent).tint(channel.isSubscribed ? BX.surface3 : BX.coral)
                     }

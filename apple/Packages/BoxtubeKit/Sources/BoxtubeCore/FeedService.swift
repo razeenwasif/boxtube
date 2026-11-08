@@ -58,11 +58,13 @@ public actor FeedService {
             await enrichMissingDetails()
             await enrichChannels()
         }
+        try? await store.detectMusicChannels()
         return report
     }
 
     /// Fills durations / categories for recent videos that came from RSS (1 unit per 50 videos).
-    public func enrichMissingDetails(limit: Int = 200) async {
+    /// Categories also tell Boxtube which channels are music artists.
+    public func enrichMissingDetails(limit: Int = 600) async {
         guard client.hasKey else { return }
         let ids = (try? await store.read { db in
             try String.fetchAll(db, sql: """

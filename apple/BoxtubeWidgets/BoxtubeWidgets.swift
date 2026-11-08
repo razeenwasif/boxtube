@@ -215,6 +215,7 @@ struct TimeBoxProvider: TimelineProvider {
 
 struct TimeBoxWidgetView: View {
     @Environment(\.widgetFamily) private var family
+    @Environment(\.widgetRenderingMode) private var renderingMode
     var body: some View {
         switch family {
         case .accessoryCircular:
@@ -234,8 +235,15 @@ struct TimeBoxWidgetView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         default:
             VStack(alignment: .leading, spacing: 6) {
-                RoundedRectangle(cornerRadius: 9).fill(coral).frame(width: 30, height: 30)
-                    .overlay(Image(systemName: "timer").font(.system(size: 14, weight: .bold)).foregroundStyle(coralInk))
+                if renderingMode == .fullColor {
+                    RoundedRectangle(cornerRadius: 9).fill(coral).frame(width: 30, height: 30)
+                        .overlay(Image(systemName: "timer").font(.system(size: 14, weight: .bold)).foregroundStyle(coralInk))
+                } else {
+                    // Tinted and clear Home Screens flatten colours, so a filled tile would become a blank square.
+                    Image(systemName: "timer").font(.system(size: 24, weight: .bold))
+                        .widgetAccentable()
+                        .frame(width: 30, height: 30, alignment: .leading)
+                }
                 Spacer()
                 Text("Time box").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
                 Text("Fill the time you have").font(.system(size: 12)).foregroundStyle(.white.opacity(0.7))
