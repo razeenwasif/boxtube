@@ -1,0 +1,107 @@
+name: Boxtube
+options:
+  bundleIdPrefix: com.razeenwasif
+  createIntermediateGroups: true
+  deploymentTarget:
+    iOS: "27.0"
+    macOS: "27.0"
+configFiles:
+  Debug: Config/Base.xcconfig
+  Release: Config/Base.xcconfig
+packages:
+  BoxtubeKit:
+    path: Packages/BoxtubeKit
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: $(BOXTUBE_TEAM)
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  Boxtube:
+    type: application
+    supportedDestinations: [iOS, macOS]
+    sources:
+      - path: Boxtube/App
+      - path: Boxtube/Shared
+      - path: Boxtube/Resources
+        excludes: ["AppIcon.icon", "AppIcon.icon/**"]
+      - path: Boxtube/Resources/AppIcon.icon
+        type: file
+        buildPhase: resources
+      - path: Boxtube/iOS
+        destinationFilters: [iOS]
+      - path: Boxtube/macOS
+        destinationFilters: [macOS]
+    dependencies:
+      - package: BoxtubeKit
+        product: BoxtubeCore
+      - package: BoxtubeKit
+        product: BoxtubeUI
+      - package: BoxtubeKit
+        product: BoxtubePlayer
+      - target: BoxtubeWidgets
+        destinationFilters: [iOS]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.razeenwasif.boxtube
+        PRODUCT_NAME: Boxtube
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: Boxtube/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Boxtube/Boxtube.entitlements
+        INFOPLIST_KEY_CFBundleDisplayName: Boxtube
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+        INFOPLIST_KEY_UIStatusBarStyle: UIStatusBarStyleLightContent
+        INFOPLIST_KEY_NSSupportsLiveActivities: YES
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.entertainment
+        INFOPLIST_KEY_YouTubeAPIKey: $(YOUTUBE_API_KEY)
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        TARGETED_DEVICE_FAMILY: "1,2"
+        "ENABLE_APP_SANDBOX[sdk=macosx*]": YES
+        "ENABLE_OUTGOING_NETWORK_CONNECTIONS[sdk=macosx*]": YES
+        "ENABLE_USER_SELECTED_FILES[sdk=macosx*]": readwrite
+        ENABLE_HARDENED_RUNTIME: YES
+  BoxtubeWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: BoxtubeWidgets
+    dependencies:
+      - package: BoxtubeKit
+        product: BoxtubeCore
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.razeenwasif.boxtube.widgets
+        PRODUCT_NAME: BoxtubeWidgets
+        INFOPLIST_FILE: BoxtubeWidgets/Info.plist
+        SKIP_INSTALL: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
+  BoxtubeUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: BoxtubeUITests
+    dependencies:
+      - target: Boxtube
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.razeenwasif.boxtube.uitests
+        TEST_TARGET_NAME: Boxtube
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
+schemes:
+  Boxtube:
+    build:
+      targets:
+        Boxtube: all
+    test:
+      targets:
+        - BoxtubeUITests
+    run:
+      config: Debug

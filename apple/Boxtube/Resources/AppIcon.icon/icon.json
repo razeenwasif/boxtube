@@ -1,0 +1,98 @@
+{
+  "fill": {
+    "automatic-gradient": "srgb:1.00000,0.35294,0.30588,1.00000"
+  },
+  "groups": [
+    {
+      "layers": [
+        {
+          "name": "play-dark",
+          "image-name": "play-dark.svg",
+          "hidden-specializations": [
+            {
+              "appearance": "light",
+              "value": true
+            }
+          ]
+        },
+        {
+          "name": "play",
+          "image-name": "play.svg",
+          "hidden-specializations": [
+            {
+              "appearance": "dark",
+              "value": true
+            }
+          ]
+        },
+        {
+          "name": "box-dark",
+          "image-name": "box-dark.svg",
+          "hidden-specializations": [
+            {
+              "appearance": "light",
+              "value": true
+            }
+          ]
+        },
+        {
+          "name": "box",
+          "image-name": "box.svg",
+          "hidden-specializations": [
+            {
+              "appearance": "dark",
+              "value": true
+            }
+          ]
+        },
+        {
+          "name": "bar-front-dark",
+          "image-name": "bar-front-dark.svg",
+          "opacity": 0.65,
+          "hidden-specializations": [
+            {
+              "appearance": "light",
+              "value": true
+            }
+          ]
+        },
+        {
+          "name": "bar-front",
+          "image-name": "bar-front.svg",
+          "opacity": 0.6,
+          "hidden-specializations": [
+            {
+              "appearance": "dark",
+              "value": true
+            }
+          ]
+        },
+        {
+          "name": "bar-back-dark",
+          "image-name": "bar-back-dark.svg",
+          "opacity": 0.35,
+          "hidden-specializations": [
+            {
+              "appearance": "light",
+              "value": true
+            }
+          ]
+        },
+        {
+          "name": "bar-back",
+          "image-name": "bar-back.svg",
+          "opacity": 0.32,
+          "hidden-specializations": [
+            {
+              "appearance": "dark",
+              "value": true
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "supported-platforms": {
+    "squares": "shared"
+  }
+}

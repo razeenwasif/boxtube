@@ -1,0 +1,59 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<style>
+html,body{margin:0;padding:0;background:#000;width:100%;height:100%;overflow:hidden}
+#player{position:absolute;inset:0;width:100%;height:100%}
+</style>
+</head>
+<body>
+<div id="player"></div>
+<script>
+var player = null, ready = false, pending = null;
+function post(m) { try { window.webkit.messageHandlers.bt.postMessage(m); } catch (e) {} }
+function onYouTubeIframeAPIReady() {
+  player = new YT.Player('player', {
+    width: '100%', height: '100%',
+    playerVars: { controls: 0, playsinline: 1, rel: 0, iv_load_policy: 3, fs: 0, disablekb: 1, enablejsapi: 1, origin: location.origin, cc_load_policy: 0, cc_lang_pref: 'en' },
+    events: {
+      onReady: function () {
+        ready = true; post({ type: 'ready' });
+        if (pending) { load(pending.id, pending.start, pending.autoplay); pending = null; }
+      },
+      onStateChange: function (e) { post({ type: 'state', state: e.data, duration: player.getDuration() || 0 }); },
+      onError: function (e) { post({ type: 'error', code: e.data }); },
+      onPlaybackRateChange: function (e) { post({ type: 'rate', rate: e.data }); }
+    }
+  });
+  setInterval(function () {
+    if (ready && player && player.getCurrentTime) {
+      post({ type: 'time', time: player.getCurrentTime() || 0, duration: player.getDuration() || 0, loaded: player.getVideoLoadedFraction() || 0 });
+    }
+  }, 250);
+}
+function load(id, start, autoplay) {
+  if (!ready) { pending = { id: id, start: start, autoplay: autoplay }; return; }
+  if (autoplay) { player.loadVideoById({ videoId: id, startSeconds: start }); }
+  else { player.cueVideoById({ videoId: id, startSeconds: start }); }
+}
+function cmd(name, arg) {
+  if (!ready || !player) return;
+  switch (name) {
+    case 'play': player.playVideo(); break;
+    case 'pause': player.pauseVideo(); break;
+    case 'seek': player.seekTo(arg, true); break;
+    case 'rate': player.setPlaybackRate(arg); break;
+    case 'mute': player.mute(); break;
+    case 'unmute': player.unMute(); break;
+    case 'volume': player.setVolume(arg); break;
+    case 'cc': if (arg) { player.loadModule('captions'); player.setOption('captions', 'track', {languageCode: 'en'}); } else { player.unloadModule('captions'); } break;
+  }
+}
+var tag = document.createElement('script');
+tag.src = 'https://www.youtube.com/iframe_api';
+document.head.appendChild(tag);
+</script>
+</body>
+</html>

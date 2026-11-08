@@ -21,3 +21,13 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# secrets
+.env
+
+# Boxtube native app
+apple/Config/Secrets.xcconfig
+apple/Boxtube.xcodeproj/
+apple/build/
+apple/Packages/BoxtubeKit/.build/
+apple/Packages/BoxtubeKit/.swiftpm/
