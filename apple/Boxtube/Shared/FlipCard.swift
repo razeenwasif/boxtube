@@ -128,9 +128,7 @@ private struct VideoInfoBack: View {
     var flipBack: () -> Void
 
     var body: some View {
-        let chapters = video.chapters
-        let meta = [Format.views(video.viewCount), Format.ago(video.publishedAt), video.durationSeconds.map { Format.minutes(Double($0)) },
-                    chapters.isEmpty ? nil : "\(chapters.count) chapters"].compactMap { $0 }.joined(separator: " · ")
+        let meta = video.detailsLine
         let saved = model.watchLaterIds.contains(video.id)
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {

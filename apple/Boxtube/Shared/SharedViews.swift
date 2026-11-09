@@ -163,21 +163,17 @@ struct ShortCard: View {
 
 // MARK: - Context menu shared by every video
 
+/// Mac: right-click opens the same menu as ⋯. iPhone: a long press shows the video's details
+/// (see `VideoPeek`); the ⋯ button is where the actions live.
 struct VideoMenu: ViewModifier {
     var video: Video
 
     func body(content: Content) -> some View {
-        content.contextMenu {
-            VideoActions(video: video)
-        } preview: {
-            VStack(alignment: .leading, spacing: 8) {
-                VideoThumbnail(video, radius: 12)
-                Text(video.title).font(.headline).lineLimit(2)
-                Text(video.channelTitle).font(.subheadline).foregroundStyle(.secondary)
-            }
-            .padding(12)
-            .frame(width: 320)
-        }
+        #if os(macOS)
+        content.contextMenu { VideoActions(video: video) }
+        #else
+        content.modifier(VideoPeekTrigger(video: video))
+        #endif
     }
 }
 

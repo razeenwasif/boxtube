@@ -179,6 +179,7 @@ struct HomeCard: View {
             }
             .padding(.horizontal, 4).padding(.top, 12)
         }
+        .videoContextMenu(video)
         .observing(model.store, { db in try Q.playlists(db) }) { playlists = $0 }
     }
 }

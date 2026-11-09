@@ -79,6 +79,8 @@ final class AppModel {
     /// Opens a window scene by id; the main window registers it, so AppKit-hosted views (the menu bar panel) can use it.
     @ObservationIgnored var openWindowAction: ((String) -> Void)?
     #endif
+    /// True while a long-press details card is up (iPhone), so the release doesn't also open the video.
+    @ObservationIgnored var peekShowing = false
 
     // Settings
     var calmMode: Bool { didSet { defaults.set(calmMode, forKey: "calmMode"); if calmMode { preview.stop() } } }
@@ -304,6 +306,8 @@ final class AppModel {
     // MARK: Playback
 
     func open(_ video: Video, at start: Double? = nil, present: Bool = true) {
+        // Lifting the finger after a long press also "taps" the card under it; the details card is up, so ignore that.
+        if peekShowing { return }
         // Opening a card that's previewing carries on from the preview's moment.
         let start = start ?? preview.handoffTime(for: video.id)
         preview.stop()
