@@ -160,7 +160,7 @@ struct MacPlaylists: View {
                     LargeTitle("Playlists")
                     Spacer()
                     TextField("New playlist", text: $newTitle).textFieldStyle(.roundedBorder).frame(width: 220)
-                        .onSubmit { let t = newTitle; newTitle = ""; guard !t.isEmpty else { return }; Task { try? await model.store.createPlaylist(title: t) } }
+                        .onSubmit { let t = newTitle; newTitle = ""; guard !t.isEmpty else { return }; Task { await model.createPlaylist(title: t) } }
                 }
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 20)], spacing: 26) {
                     ForEach(playlists) { p in

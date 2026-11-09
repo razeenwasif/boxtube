@@ -49,7 +49,7 @@ struct PhoneRoot: View {
         }
         .onChange(of: model.player.state.time) { _, _ in model.tick(model.player.state) }
         .onChange(of: model.player.state.isPlaying) { _, _ in model.tick(model.player.state) }
-        .onChange(of: scenePhase) { _, phase in if phase != .active { model.preview.stop() } }
+        .onChange(of: scenePhase) { _, phase in if phase != .active { model.preview.stop() } else { model.scheduleSync() } }
         .onAppear { live.attach(to: model) }
     }
 

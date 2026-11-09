@@ -5,6 +5,8 @@ public enum BoxtubeError: LocalizedError, Sendable {
     case http(Int, String)
     case decoding(String)
     case notSignedIn(String)
+    /// A YouTube API refusal with its machine-readable reason (e.g. quotaExceeded, subscriptionDuplicate).
+    case youtube(status: Int, reason: String, message: String)
 
     public var errorDescription: String? {
         switch self {
@@ -12,6 +14,7 @@ public enum BoxtubeError: LocalizedError, Sendable {
         case .http(let code, let message): "YouTube returned \(code): \(message)"
         case .decoding(let what): "Couldn't read \(what)."
         case .notSignedIn(let message): message
+        case .youtube(_, let reason, let message): reason == "quotaExceeded" ? "Today's YouTube quota is used up. It resets at midnight Pacific time." : message
         }
     }
 }
@@ -57,7 +60,7 @@ public actor YouTubeClient {
     public func search(_ text: String, duration: String? = nil) async throws -> [Video] {
         var query = ["part": "snippet", "q": text, "type": "video", "maxResults": "25", "safeSearch": "moderate"]
         if let duration { query["videoDuration"] = duration }
-        let page: Page<SearchResource> = try await get("search", query)
+        let page: Page<SearchResource> = try await get("search", query, cost: 100)
         let ids = page.items.compactMap(\.id.videoId)
         let details = try await videos(ids: ids)
         let byId = Dictionary(uniqueKeysWithValues: details.map { ($0.id, $0) })
@@ -65,7 +68,7 @@ public actor YouTubeClient {
     }
 
     public func searchChannels(_ text: String) async throws -> [Channel] {
-        let page: Page<SearchResource> = try await get("search", ["part": "snippet", "q": text, "type": "channel", "maxResults": "10"])
+        let page: Page<SearchResource> = try await get("search", ["part": "snippet", "q": text, "type": "channel", "maxResults": "10"], cost: 100)
         let ids = page.items.compactMap(\.id.channelId)
         return try await channels(ids: ids)
     }
@@ -151,7 +154,80 @@ public actor YouTubeClient {
 
     // MARK: Transport
 
-    private func get<T: Decodable>(_ path: String, _ query: [String: String], token: String? = nil) async throws -> T {
+    // MARK: Quota
+
+    /// Estimated quota units spent since the last call (1 per list call, 100 per search, 50 per change).
+    private var unitsSpent = 0
+    public func takeUnitsSpent() -> Int { defer { unitsSpent = 0 }; return unitsSpent }
+
+    // MARK: Changes to your account (OAuth, youtube.force-ssl)
+
+    /// Like, dislike or clear ("none") your rating of a video.
+    public func rate(videoId: String, rating: String, token: String) async throws {
+        _ = try await send("POST", "videos/rate", ["id": videoId, "rating": rating], token: token)
+    }
+
+    public func subscribe(channelId: String, token: String) async throws {
+        let body = ["snippet": ["resourceId": ["kind": "youtube#channel", "channelId": channelId]]]
+        _ = try await send("POST", "subscriptions", ["part": "snippet"], body: body, token: token)
+    }
+
+    /// Your subscription to a channel, if any (unsubscribing needs its id).
+    public func subscriptionId(channelId: String, token: String) async throws -> String? {
+        let page: Page<IdOnly> = try await get("subscriptions", ["part": "id", "mine": "true", "forChannelId": channelId], token: token)
+        return page.items.first?.id
+    }
+
+    public func deleteSubscription(id: String, token: String) async throws {
+        _ = try await send("DELETE", "subscriptions", ["id": id], token: token)
+    }
+
+    public func addToPlaylist(playlistId: String, videoId: String, token: String) async throws {
+        let body = ["snippet": ["playlistId": playlistId, "resourceId": ["kind": "youtube#video", "videoId": videoId]]]
+        _ = try await send("POST", "playlistItems", ["part": "snippet"], body: body, token: token)
+    }
+
+    /// The playlist entries holding a video (removing needs their ids).
+    public func playlistItemIds(playlistId: String, videoId: String, token: String) async throws -> [String] {
+        let page: Page<IdOnly> = try await get("playlistItems", ["part": "id", "playlistId": playlistId, "videoId": videoId, "maxResults": "50"], token: token)
+        return page.items.map(\.id)
+    }
+
+    public func deletePlaylistItem(id: String, token: String) async throws {
+        _ = try await send("DELETE", "playlistItems", ["id": id], token: token)
+    }
+
+    /// Makes a private playlist on your channel and returns its id.
+    public func createPlaylist(title: String, token: String) async throws -> String {
+        let body = ["snippet": ["title": title], "status": ["privacyStatus": "private"]]
+        let data = try await send("POST", "playlists", ["part": "snippet,status"], body: body, token: token)
+        guard let made = try? Self.decoder.decode(IdOnly.self, from: data) else { throw BoxtubeError.decoding("new playlist") }
+        return made.id
+    }
+
+    private func send(_ method: String, _ path: String, _ query: [String: String], body: [String: Any]? = nil, token: String) async throws -> Data {
+        var components = URLComponents(url: base.appending(path: path), resolvingAgainstBaseURL: false)!
+        components.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
+        var request = URLRequest(url: components.url!)
+        request.httpMethod = method
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if let body {
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+        unitsSpent += 50
+        let (data, response) = try await session.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(status) else { throw Self.refusal(status, data) }
+        return data
+    }
+
+    private static func refusal(_ status: Int, _ data: Data) -> BoxtubeError {
+        let e = (try? JSONDecoder().decode(APIErrorEnvelope.self, from: data))?.error
+        return .youtube(status: status, reason: e?.errors?.first?.reason ?? "", message: e?.message ?? "request failed")
+    }
+
+    private func get<T: Decodable>(_ path: String, _ query: [String: String], token: String? = nil, cost: Int = 1) async throws -> T {
         var components = URLComponents(url: base.appending(path: path), resolvingAgainstBaseURL: false)!
         var items = query.map { URLQueryItem(name: $0.key, value: $0.value) }
         if token == nil {
@@ -162,6 +238,7 @@ public actor YouTubeClient {
         var request = URLRequest(url: components.url!)
         if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         else if let bundle = Bundle.main.bundleIdentifier { request.setValue(bundle, forHTTPHeaderField: "X-Ios-Bundle-Identifier") }
+        unitsSpent += cost
         let (data, response) = try await session.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {
@@ -184,7 +261,12 @@ public actor YouTubeClient {
 
 // MARK: - Wire types
 
-private struct APIErrorEnvelope: Decodable { struct E: Decodable { var message: String }; var error: E }
+private struct APIErrorEnvelope: Decodable {
+    struct Detail: Decodable { var reason: String? }
+    struct E: Decodable { var message: String; var errors: [Detail]? }
+    var error: E
+}
+private struct IdOnly: Decodable { var id: String }
 private struct Page<Item: Decodable>: Decodable { var items: [Item]; var nextPageToken: String? }
 
 private struct Thumbs: Decodable {

@@ -145,6 +145,41 @@ public struct LikedVideo: Codable, Hashable, Sendable, FetchableRecord, Persista
     public init(videoId: String, likedAt: Date = .now) { self.videoId = videoId; self.likedAt = likedAt }
 }
 
+/// A change made in Boxtube that's waiting to be sent to your YouTube account.
+public struct OutboxOp: Codable, Hashable, Identifiable, Sendable, FetchableRecord, MutablePersistableRecord {
+    public static let databaseTableName = "outbox"
+
+    public enum Kind: String, Codable, Sendable, CaseIterable {
+        case like, dislike, unrate, subscribe, unsubscribe, playlistAdd, playlistRemove, playlistCreate
+
+        /// Kinds that replace one another for the same target: the latest one wins.
+        var family: String {
+            switch self {
+            case .like, .dislike, .unrate: "rating"
+            case .subscribe, .unsubscribe: "subscription"
+            case .playlistAdd, .playlistRemove: "playlistItem"
+            case .playlistCreate: "playlistCreate"
+            }
+        }
+    }
+
+    public var id: Int64?
+    public var kind: Kind
+    /// A video id, channel id, or (for playlistCreate) the local playlist id.
+    public var target: String
+    public var playlistId: String?
+    public var createdAt: Date
+    public var attempts: Int
+    public var lastError: String?
+
+    public init(id: Int64? = nil, kind: Kind, target: String, playlistId: String? = nil, createdAt: Date = .now, attempts: Int = 0, lastError: String? = nil) {
+        self.id = id; self.kind = kind; self.target = target; self.playlistId = playlistId
+        self.createdAt = createdAt; self.attempts = attempts; self.lastError = lastError
+    }
+
+    public mutating func didInsert(_ inserted: InsertionSuccess) { id = inserted.rowID }
+}
+
 public struct Note: Codable, Hashable, Identifiable, Sendable, FetchableRecord, MutablePersistableRecord {
     public static let databaseTableName = "note"
     public var id: Int64?

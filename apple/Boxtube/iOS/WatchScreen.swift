@@ -239,7 +239,7 @@ struct WatchScreen: View {
                     }
                     .accessibilityLabel(liked ? "Liked" : "Like")
                     Rectangle().fill(.white.opacity(0.12)).frame(width: 1).padding(.vertical, 9)
-                    Button { disliked.toggle(); if disliked, liked { model.toggleLike(v.id) } } label: {
+                    Button { disliked.toggle(); model.setDisliked(v.id, disliked) } label: {
                         Image(systemName: disliked ? "hand.thumbsdown.fill" : "hand.thumbsdown").font(.system(size: 14))
                             .padding(.horizontal, 13).frame(height: 36)
                     }

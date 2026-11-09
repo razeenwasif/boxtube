@@ -447,7 +447,7 @@ struct MusicLibraryScreen: View {
         .islandClearance()
         .alert("New playlist", isPresented: $showNew) {
             TextField("Name", text: $newTitle)
-            Button("Create") { let t = newTitle; newTitle = ""; Task { try? await model.store.createPlaylist(title: t.isEmpty ? "New playlist" : t, music: true) } }
+            Button("Create") { let t = newTitle; newTitle = ""; Task { await model.createPlaylist(title: t.isEmpty ? "New playlist" : t, music: true) } }
             Button("Cancel", role: .cancel) {}
         }
         .observing(model.store, { db in try Q.playlists(db, music: true) }) { playlists = $0 }

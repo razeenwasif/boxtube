@@ -151,7 +151,9 @@ struct MacSettings: View {
             Section {
                 GoogleAccountSection()
             } header: { Text("YouTube account") } footer: {
-                Text("Read-only: Boxtube copies your subscriptions, playlists and liked videos. Changes you make here stay in Boxtube.")
+                Text(model.syncEnabled
+                         ? "Likes, subscriptions, playlist edits and new playlists go to YouTube; each change uses 50 of your 10,000 daily quota units. Deleting a playlist only removes it from Boxtube."
+                         : "Boxtube copies your subscriptions, playlists and liked videos. Turn on sync to send changes you make here back to YouTube.")
             }
             Button("Clear watch history", role: .destructive) { Task { try? await model.store.clearHistory() } }
         }
@@ -225,7 +227,7 @@ struct MacMusic: View {
                 Text("Your library").font(.system(size: 15, weight: .bold))
                 Spacer()
                 Button {
-                    Task { if let p = try? await model.store.createPlaylist(title: "New playlist", music: true) { selected = p.id } }
+                    Task { if let p = await model.createPlaylist(title: "New playlist", music: true) { selected = p.id } }
                 } label: {
                     Image(systemName: "plus").font(.system(size: 13, weight: .bold)).foregroundStyle(BX.text)
                         .frame(width: 30, height: 30).background(BX.surface3, in: Circle())

@@ -79,7 +79,7 @@ struct MacRoot: View {
         .sheet(isPresented: $model.showTimeBox) { TimeBoxView().frame(width: 460, height: 760) }
         .onChange(of: model.player.state.time) { _, _ in model.tick(model.player.state) }
         .onChange(of: model.player.state.isPlaying) { _, _ in model.tick(model.player.state) }
-        .onChange(of: scenePhase) { _, phase in if phase != .active { model.preview.stop() } }
+        .onChange(of: scenePhase) { _, phase in if phase != .active { model.preview.stop() } else { model.scheduleSync() } }
         .onChange(of: section) { _, s in
             model.watching = nil
             model.paths[.home] = []

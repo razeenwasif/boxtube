@@ -142,7 +142,7 @@ public actor FeedService {
     }
 
     /// Copies subscriptions, playlists and liked videos from YouTube into the library (about 10–30 quota units).
-    public func importAccount(token: String) async throws -> ImportReport {
+    public func importAccount(token: String, mirrorSubscriptions: Bool = false) async throws -> ImportReport {
         async let subsTask = client.mySubscriptions(token: token)
         async let listsTask = client.myPlaylists(token: token)
         async let likedTask = client.myLikedVideos(token: token)
@@ -160,7 +160,7 @@ public actor FeedService {
 
         try await store.upsert(videos: liked + details)
         try await store.importAccount(subscriptions: subs, playlists: playlistItems, likedIds: liked.map(\.id),
-                                      starterIds: Set(Seeds.channels.map(\.id)))
+                                      starterIds: Set(Seeds.channels.map(\.id)), mirrorSubscriptions: mirrorSubscriptions)
         return ImportReport(subscriptions: subs.count, playlists: lists.count, liked: liked.count)
     }
 

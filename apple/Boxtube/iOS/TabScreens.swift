@@ -111,7 +111,7 @@ struct PlaylistDetailScreen: View {
                 }
                 ForEach(videos) { v in
                     VideoRow(video: v)
-                        .swipeActions { Button(role: .destructive) { Task { try? await model.store.remove(videoId: v.id, fromPlaylist: playlistId) } } label: { Label("Remove", systemImage: "trash") } }
+                        .swipeActions { Button(role: .destructive) { model.remove(v.id, from: playlistId) } label: { Label("Remove", systemImage: "trash") } }
                 }
                 if videos.isEmpty { HintCard(icon: "text.badge.plus", title: "Empty playlist", message: "Long-press any video and choose Add to playlist.") }
             }
@@ -341,7 +341,9 @@ struct SettingsSheet: View {
                 Section {
                     GoogleAccountSection()
                 } header: { Text("YouTube account") } footer: {
-                    Text("Read-only: Boxtube copies your subscriptions, playlists and liked videos. Changes you make here stay in Boxtube.")
+                    Text(model.syncEnabled
+                         ? "Likes, subscriptions, playlist edits and new playlists go to YouTube; each change uses 50 of your 10,000 daily quota units. Deleting a playlist only removes it from Boxtube."
+                         : "Boxtube copies your subscriptions, playlists and liked videos. Turn on sync to send changes you make here back to YouTube.")
                 }
                 Section {
                     LabeledContent("YouTube API key", value: model.hasAPIKey ? "Added" : "Missing")

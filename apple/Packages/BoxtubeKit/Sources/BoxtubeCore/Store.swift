@@ -103,6 +103,17 @@ public final class Store: Sendable {
         m.registerMigration("v3-channel-music-choice") { db in
             try db.alter(table: "channel") { t in t.add(column: "musicChosen", .boolean).notNull().defaults(to: false) }
         }
+        m.registerMigration("v4-outbox") { db in
+            try db.create(table: "outbox") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("kind", .text).notNull()
+                t.column("target", .text).notNull()
+                t.column("playlistId", .text)
+                t.column("createdAt", .datetime).notNull()
+                t.column("attempts", .integer).notNull().defaults(to: 0)
+                t.column("lastError", .text)
+            }
+        }
         return m
     }
 
@@ -251,6 +262,56 @@ public final class Store: Sendable {
         return playlist
     }
 
+    // MARK: Outbox (two-way sync)
+
+    /// Playlists made in Boxtube have UUID ids; YouTube's own look like "PL…".
+    public static func isLocalPlaylist(_ id: String) -> Bool { UUID(uuidString: id) != nil }
+
+    /// Queues a change for YouTube. A newer change replaces any waiting one it overrides
+    /// (like then unlike sends only the unlike; add then remove the same video sends only the remove).
+    public func enqueue(_ kind: OutboxOp.Kind, target: String, playlistId: String? = nil) async throws {
+        try await writer.write { db in
+            let family = OutboxOp.Kind.allCases.filter { $0.family == kind.family }.map(\.rawValue)
+            if kind != .playlistCreate {
+                try db.execute(sql: """
+                    DELETE FROM outbox WHERE target = ? AND kind IN (\(family.map { _ in "?" }.joined(separator: ",")))
+                    AND COALESCE(playlistId, '') = COALESCE(?, '')
+                    """, arguments: StatementArguments([target] + family + [playlistId]))
+            }
+            var op = OutboxOp(kind: kind, target: target, playlistId: playlistId)
+            try op.insert(db)
+        }
+    }
+
+    public func finishOutbox(_ id: Int64) async throws {
+        try await writer.write { db in _ = try OutboxOp.deleteOne(db, key: id) }
+    }
+
+    public func failOutbox(_ id: Int64, error: String) async throws {
+        try await writer.write { db in
+            try db.execute(sql: "UPDATE outbox SET attempts = attempts + 1, lastError = ? WHERE id = ?", arguments: [error, id])
+        }
+    }
+
+    /// Gives up on changes YouTube kept refusing.
+    public func clearFailedOutbox() async throws {
+        try await writer.write { db in
+            try db.execute(sql: "DELETE FROM outbox WHERE attempts >= ?", arguments: [SyncService.maxAttempts])
+        }
+    }
+
+    /// After a Boxtube playlist is created on YouTube, it takes YouTube's id everywhere.
+    public func rekeyPlaylist(from old: String, to new: String) async throws {
+        try await writer.write { db in
+            guard var playlist = try Playlist.fetchOne(db, key: old) else { return }
+            playlist.id = new
+            try playlist.insert(db, onConflict: .replace)
+            try db.execute(sql: "UPDATE playlistItem SET playlistId = ? WHERE playlistId = ?", arguments: [new, old])
+            try db.execute(sql: "UPDATE outbox SET playlistId = ? WHERE playlistId = ?", arguments: [new, old])
+            _ = try Playlist.deleteOne(db, key: old)
+        }
+    }
+
     /// "Show in Music" for a channel: moves it between the Videos feed and Music's artists, and remembers the choice.
     public func setChannelMusic(_ id: String, _ music: Bool) async throws {
         try await writer.write { db in
@@ -303,9 +364,10 @@ public final class Store: Sendable {
     /// Brings in what's on your YouTube account. Subscriptions and likes are added; your playlists are
     /// mirrored (same ids, items replaced). Starter channels you don't follow on YouTube are dropped.
     public func importAccount(subscriptions: [Channel], playlists: [(YouTubeClient.AccountPlaylist, [String])],
-                              likedIds: [String], starterIds: Set<String>) async throws {
+                              likedIds: [String], starterIds: Set<String>, mirrorSubscriptions: Bool = false) async throws {
         try await writer.write { db in
             let subscribed = Set(subscriptions.map(\.id))
+            let waiting = try OutboxOp.fetchAll(db)
             for channel in subscriptions {
                 var c = try Channel.fetchOne(db, key: channel.id) ?? channel
                 c.title = channel.title
@@ -314,7 +376,15 @@ public final class Store: Sendable {
                 c.subscribedAt = c.subscribedAt ?? .now
                 try c.save(db)
             }
-            for id in starterIds.subtracting(subscribed) {
+            // With sync on, YouTube is the record: channels you've left there are left here too,
+            // unless a subscribe from Boxtube is still on its way.
+            var toDrop = starterIds.subtracting(subscribed)
+            if mirrorSubscriptions {
+                let pending = Set(waiting.filter { $0.kind == .subscribe }.map(\.target))
+                let local = try String.fetchAll(db, sql: "SELECT id FROM channel WHERE isSubscribed = 1")
+                toDrop.formUnion(Set(local).subtracting(subscribed).subtracting(pending))
+            }
+            for id in toDrop {
                 try db.execute(sql: "UPDATE channel SET isSubscribed = 0 WHERE id = ?", arguments: [id])
             }
             for (remote, videoIds) in playlists {
@@ -341,6 +411,20 @@ public final class Store: Sendable {
             let now = Date.now
             for (i, vid) in likedIds.enumerated() where try !LikedVideo.exists(db, key: vid) {
                 try LikedVideo(videoId: vid, likedAt: now.addingTimeInterval(-Double(i))).insert(db)
+            }
+            // Changes still waiting to reach YouTube stay visible here.
+            for op in waiting {
+                switch op.kind {
+                case .unrate, .dislike: _ = try LikedVideo.deleteOne(db, key: op.target)
+                case .unsubscribe: try db.execute(sql: "UPDATE channel SET isSubscribed = 0 WHERE id = ?", arguments: [op.target])
+                case .playlistAdd:
+                    guard let pl = op.playlistId else { continue }
+                    let next = try Int.fetchOne(db, sql: "SELECT COALESCE(MAX(position), -1) + 1 FROM playlistItem WHERE playlistId = ?", arguments: [pl]) ?? 0
+                    try PlaylistItem(playlistId: pl, videoId: op.target, position: next).insert(db, onConflict: .ignore)
+                case .playlistRemove:
+                    try db.execute(sql: "DELETE FROM playlistItem WHERE playlistId = ? AND videoId = ?", arguments: [op.playlistId, op.target])
+                default: continue
+                }
             }
         }
     }
@@ -470,6 +554,28 @@ public enum Q {
                 """, arguments: [p.id])
             return PlaylistSummary(playlist: p, count: count, cover: cover)
         }
+    }
+
+    /// The oldest change still worth sending (ones YouTube kept refusing are set aside).
+    public static func nextOutboxOp(_ db: Database, skipping skipped: Set<Int64> = []) throws -> OutboxOp? {
+        try OutboxOp.filter(Column("attempts") < SyncService.maxAttempts)
+            .filter(!skipped.contains(Column("id")))
+            .order(Column("id")).fetchOne(db)
+    }
+
+    public struct OutboxSummary: Sendable, Equatable {
+        public var waiting = 0
+        public var failed = 0
+        public var lastError: String?
+        public init(waiting: Int = 0, failed: Int = 0, lastError: String? = nil) {
+            self.waiting = waiting; self.failed = failed; self.lastError = lastError
+        }
+    }
+
+    public static func outboxSummary(_ db: Database) throws -> OutboxSummary {
+        let all = try OutboxOp.fetchAll(db)
+        let failed = all.filter { $0.attempts >= SyncService.maxAttempts }
+        return OutboxSummary(waiting: all.count - failed.count, failed: failed.count, lastError: failed.last?.lastError)
     }
 
     public static func playlistVideos(_ db: Database, id: String) throws -> [Video] {

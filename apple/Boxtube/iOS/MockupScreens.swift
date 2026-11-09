@@ -420,7 +420,7 @@ struct PlaylistsScreen: View {
         .islandClearance()
         .alert("New playlist", isPresented: $showNew) {
             TextField("Name", text: $newTitle)
-            Button("Create") { let t = newTitle; newTitle = ""; Task { try? await model.store.createPlaylist(title: t.isEmpty ? "New playlist" : t, music: model.mode == .music) } }
+            Button("Create") { let t = newTitle; newTitle = ""; Task { await model.createPlaylist(title: t.isEmpty ? "New playlist" : t, music: model.mode == .music) } }
             Button("Cancel", role: .cancel) {}
         }
         .observing(model.store, { db in try Q.playlists(db) }) { playlists = $0 }
@@ -503,6 +503,12 @@ struct ProfileScreen: View {
                         .accessibilityHidden(true)
                     Text(model.displayName).font(BX.display(25, .bold)).kerning(-0.5).padding(.top, 14)
                     Text("@\(handle) · \(stats?.subscriptions ?? 0) subscriptions").font(.system(size: 13)).foregroundStyle(BX.muted).padding(.top, 3)
+                    if model.syncEnabled {
+                        Label("Synced with YouTube · \(model.syncStatusText)", systemImage: model.sync.problem == nil ? "arrow.triangle.2.circlepath" : "exclamationmark.triangle.fill")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(model.sync.problem == nil ? BX.sageText : BX.amber)
+                            .padding(.top, 4)
+                    }
                     HStack(spacing: 8) {
                         pill("Edit profile") { editingName = true }
                         pill("Settings") { showSettings = true }

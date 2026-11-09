@@ -14,12 +14,16 @@ public struct GoogleAccount: Codable, Hashable, Sendable {
 /// caught on a loopback port. Tokens live in the Keychain. Read-only YouTube access.
 public actor GoogleAuth {
     public static let scopes = ["openid", "profile", "https://www.googleapis.com/auth/youtube.readonly"]
+    /// Needed only for two-way sync (likes, subscriptions, playlist edits); asked for when sync is turned on.
+    public static let writeScope = "https://www.googleapis.com/auth/youtube.force-ssl"
 
     private struct Tokens: Codable {
         var accessToken: String
         var refreshToken: String?
         var expiry: Date
         var account: GoogleAccount?
+        /// What Google granted (missing in tokens saved before sync existed).
+        var scopes: [String]?
     }
 
     public struct Pending: Sendable {
@@ -53,10 +57,13 @@ public actor GoogleAuth {
 
     public var account: GoogleAccount? { tokens?.account }
 
+    /// Whether this sign-in may change your YouTube account.
+    public var canWrite: Bool { tokens?.scopes?.contains(Self.writeScope) == true }
+
     // MARK: Sign in
 
     /// Starts a loopback listener and returns the Google consent URL to open in a browser session.
-    public func begin() async throws -> Pending {
+    public func begin(write: Bool = false) async throws -> Pending {
         guard let clientID else { throw BoxtubeError.notSignedIn("Add a Google OAuth client ID to apple/Config/Secrets.xcconfig.") }
         let receiver = try await LoopbackReceiver.start()
         let redirect = "http://127.0.0.1:\(receiver.port)"
@@ -68,7 +75,8 @@ public actor GoogleAuth {
             .init(name: "client_id", value: clientID),
             .init(name: "redirect_uri", value: redirect),
             .init(name: "response_type", value: "code"),
-            .init(name: "scope", value: Self.scopes.joined(separator: " ")),
+            .init(name: "scope", value: (Self.scopes + (write ? [Self.writeScope] : [])).joined(separator: " ")),
+            .init(name: "include_granted_scopes", value: "true"),
             .init(name: "code_challenge", value: challenge),
             .init(name: "code_challenge_method", value: "S256"),
             .init(name: "state", value: state),
@@ -91,7 +99,8 @@ public actor GoogleAuth {
             "grant_type": "authorization_code",
         ])
         var saved = Tokens(accessToken: token.access_token, refreshToken: token.refresh_token,
-                           expiry: .now.addingTimeInterval(Double(token.expires_in ?? 3600) - 60))
+                           expiry: .now.addingTimeInterval(Double(token.expires_in ?? 3600) - 60),
+                           scopes: token.scope.map { $0.split(separator: " ").map(String.init) })
         tokens = saved
         let account = (try? await profile(token: saved.accessToken)) ?? GoogleAccount(name: "Google account")
         saved.account = account
@@ -124,6 +133,7 @@ public actor GoogleAuth {
             t.accessToken = token.access_token
             t.expiry = .now.addingTimeInterval(Double(token.expires_in ?? 3600) - 60)
             if let r = token.refresh_token { t.refreshToken = r }
+            if let scope = token.scope { t.scopes = scope.split(separator: " ").map(String.init) }
             tokens = t
             persist()
             return t.accessToken
@@ -141,6 +151,7 @@ public actor GoogleAuth {
         var access_token: String
         var refresh_token: String?
         var expires_in: Int?
+        var scope: String?
     }
 
     private func tokenRequest(_ fields: [String: String]) async throws -> TokenResponse {

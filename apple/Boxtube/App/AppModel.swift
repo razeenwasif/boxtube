@@ -65,7 +65,13 @@ final class AppModel {
     var account: GoogleAccount?
     var isSigningIn = false
     var isImporting = false
-    var lastImport: Date?
+    var lastImport: Date? { didSet { defaults.set(lastImport, forKey: "lastImport") } }
+    let syncService: SyncService
+    var syncEnabled: Bool { didSet { defaults.set(syncEnabled, forKey: "syncEnabled") } }
+    var sync = SyncState()
+    var quotaToday: Int { didSet { defaults.set(quotaToday, forKey: "quotaToday") } }
+    var quotaDay: Date? { didSet { defaults.set(quotaDay, forKey: "quotaDay") } }
+    @ObservationIgnored var syncDebounce: Task<Void, Never>?
 
     // Settings
     var calmMode: Bool { didSet { defaults.set(calmMode, forKey: "calmMode"); if calmMode { preview.stop() } } }
@@ -125,6 +131,7 @@ final class AppModel {
         let client = YouTubeClient(apiKey: key)
         self.store = store
         self.feed = FeedService(store: store, client: client)
+        self.syncService = SyncService(store: store, youtube: client)
         self.hasAPIKey = client.hasKey
         let google = GoogleAuth(clientID: Bundle.main.object(forInfoDictionaryKey: "GoogleClientID") as? String,
                                 clientSecret: Bundle.main.object(forInfoDictionaryKey: "GoogleClientSecret") as? String)
@@ -137,6 +144,10 @@ final class AppModel {
         tintFromVideo = defaults.object(forKey: "tintFromVideo") as? Bool ?? true
         displayName = defaults.string(forKey: "displayName") ?? "Jordan Diaz"
         autoplay = defaults.object(forKey: "autoplay") as? Bool ?? true
+        syncEnabled = defaults.bool(forKey: "syncEnabled")
+        quotaToday = defaults.integer(forKey: "quotaToday")
+        quotaDay = defaults.object(forKey: "quotaDay") as? Date
+        lastImport = defaults.object(forKey: "lastImport") as? Date
         #if os(iOS)
         previewMode = PreviewMode(rawValue: defaults.string(forKey: "previewMode") ?? "") ?? .wifiOnly
         #else
@@ -165,6 +176,17 @@ final class AppModel {
         WidgetCenter.shared.reloadAllTimelines() // so widgets redraw after an app update
         #endif
         account = await google.account
+        if syncEnabled {
+            Task { await syncNow() }
+            // While changes are waiting (offline, or out of quota), try again every few minutes.
+            Task { [weak self] in
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(300))
+                    guard let self else { return }
+                    if self.syncEnabled, self.sync.summary.waiting > 0 { await self.syncNow(importAfter: false) }
+                }
+            }
+        }
         _ = try? await store.purgeWatchLater(olderThan: clearAfterWeeks)
         observeLibrary()
         await refresh()
@@ -180,12 +202,16 @@ final class AppModel {
         observers.forEach { $0.cancel() }
         let liked = store.values { db in try Q.likedIds(db) }
         let later = store.values { db in try Q.watchLaterIds(db) }
+        let outbox = store.values { db in try Q.outboxSummary(db) }
         observers = [
             Task { [weak self] in
                 do { for try await ids in liked { self?.likedIds = ids } } catch {}
             },
             Task { [weak self] in
                 do { for try await ids in later { self?.watchLaterIds = ids } } catch {}
+            },
+            Task { [weak self] in
+                do { for try await summary in outbox { self?.sync.summary = summary } } catch {}
             },
         ]
     }
@@ -273,23 +299,9 @@ final class AppModel {
         flash(adding ? "Saved to Watch later" : "Removed from Watch later")
     }
 
-    func toggleLike(_ id: String) {
-        Task { try? await store.toggleLike(id) }
-    }
 
-    func subscribe(_ channel: Channel) {
-        Task { try? await store.subscribe(channel, music: mode == .music); await feed.refreshSubscriptions(force: true) }
-        flash("Subscribed to \(channel.title)")
-    }
 
-    func unsubscribe(_ id: String) {
-        Task { try? await store.unsubscribe(id) }
-    }
 
-    func add(_ videoId: String, to playlist: Playlist) {
-        Task { try? await store.add(videoId: videoId, toPlaylist: playlist.id) }
-        flash("Added to \(playlist.title)")
-    }
 
     func rememberSearch(_ text: String) {
         let t = text.trimmingCharacters(in: .whitespaces)

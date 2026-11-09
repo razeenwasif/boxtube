@@ -40,13 +40,13 @@ final class BrowserSignIn: NSObject, ASWebAuthenticationPresentationContextProvi
 }
 
 extension AppModel {
-    func signInWithGoogle() async {
+    func signInWithGoogle(write: Bool = false) async {
         guard !isSigningIn else { return }
         isSigningIn = true
         defer { isSigningIn = false }
         let browser = BrowserSignIn()
         do {
-            let pending = try await google.begin()
+            let pending = try await google.begin(write: write)
             browser.open(pending.url) { [google] in Task { await google.cancel(pending) } }
             let signedIn = try await google.finish(pending)
             browser.close()
@@ -61,15 +61,17 @@ extension AppModel {
         }
     }
 
-    func importFromYouTube() async {
+    func importFromYouTube(quiet: Bool = false) async {
         guard !isImporting else { return }
         isImporting = true
         defer { isImporting = false }
         do {
             let token = try await google.accessToken()
-            let r = try await feed.importAccount(token: token)
+            // With sync on, YouTube is the record for subscriptions.
+            let r = try await feed.importAccount(token: token, mirrorSubscriptions: syncEnabled)
             lastImport = .now
-            flash("Imported \(r.subscriptions) subscriptions, \(r.playlists) playlists and \(r.liked) liked videos", seconds: 4)
+            await recordQuota()
+            if !quiet { flash("Imported \(r.subscriptions) subscriptions, \(r.playlists) playlists and \(r.liked) liked videos", seconds: 4) }
             await refresh(force: true)
         } catch BoxtubeError.notSignedIn(let message) {
             account = nil
@@ -82,6 +84,7 @@ extension AppModel {
     func signOutOfGoogle() async {
         await google.signOut()
         account = nil
+        syncEnabled = false
         flash("Signed out of Google")
     }
 
@@ -115,6 +118,14 @@ struct GoogleAccountSection: View {
                     if let email = account.email { Text(email).font(.system(size: 12)).foregroundStyle(BX.muted) }
                 }
             }
+            Toggle(isOn: Binding(get: { model.syncEnabled }, set: { on in Task { await model.setSync(on) } })) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Sync changes to YouTube")
+                    Text("Likes, subscriptions and playlist edits").font(.system(size: 12)).foregroundStyle(BX.muted)
+                }
+            }
+            .disabled(model.isSigningIn)
+            if model.syncEnabled { SyncStatusRows() }
             Button {
                 Task { await model.importFromYouTube() }
             } label: {
@@ -135,6 +146,42 @@ struct GoogleAccountSection: View {
                 }
             }
             .disabled(model.isSigningIn)
+        }
+    }
+}
+
+/// Sync's state in Settings: what's waiting, any problem, today's quota, and Sync now.
+private struct SyncStatusRows: View {
+    @Environment(AppModel.self) private var model
+    var body: some View {
+        let sync = model.sync
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: sync.problem != nil ? "exclamationmark.triangle.fill" : (sync.summary.waiting > 0 ? "arrow.triangle.2.circlepath" : "checkmark.circle.fill"))
+                .foregroundStyle(sync.problem != nil ? BX.amber : (sync.summary.waiting > 0 ? BX.muted : BX.sage))
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(model.syncStatusText).font(.system(size: 13, weight: .semibold))
+                if let problem = sync.problem { Text(problem).font(.system(size: 12)).foregroundStyle(BX.muted) }
+                Text("\(model.quotaToday.formatted()) of 10,000 YouTube quota units used today")
+                    .font(.system(size: 12)).foregroundStyle(BX.muted)
+            }
+            Spacer(minLength: 8)
+            Button {
+                Task { await model.syncNow(importAfter: true) }
+            } label: {
+                if sync.syncing { ProgressView().controlSize(.small) } else { Text("Sync now") }
+            }
+            .disabled(sync.syncing)
+        }
+        if sync.summary.failed > 0 {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("YouTube refused \(sync.summary.failed) change\(sync.summary.failed == 1 ? "" : "s")").font(.system(size: 13, weight: .semibold))
+                    if let e = sync.summary.lastError { Text(e).font(.system(size: 12)).foregroundStyle(BX.muted).lineLimit(2) }
+                }
+                Spacer()
+                Button("Discard", role: .destructive) { Task { await model.retryFailedSync() } }
+            }
         }
     }
 }

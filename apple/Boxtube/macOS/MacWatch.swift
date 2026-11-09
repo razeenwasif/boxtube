@@ -214,7 +214,7 @@ struct MacWatchView: View {
                 .accessibilityLabel(liked ? "Liked" : "Like")
                 Rectangle().fill(.white.opacity(0.12)).frame(width: 1).padding(.vertical, 9)
                 Button {
-                    if disliked.contains(v.id) { disliked.remove(v.id) } else { disliked.insert(v.id); if liked { model.toggleLike(v.id) } }
+                    if disliked.contains(v.id) { disliked.remove(v.id); model.setDisliked(v.id, false) } else { disliked.insert(v.id); model.setDisliked(v.id, true) }
                 } label: {
                     Image(systemName: disliked.contains(v.id) ? "hand.thumbsdown.fill" : "hand.thumbsdown").font(.system(size: 14, weight: .medium))
                         .foregroundStyle(BX.text2).padding(.horizontal, 13).frame(maxHeight: .infinity).contentShape(Rectangle())
