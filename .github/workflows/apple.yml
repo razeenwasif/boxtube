@@ -1,0 +1,55 @@
+# Builds the iPhone and Mac apps and runs BoxtubeKit's tests on every push and pull request
+# that touches apple/. Nothing is signed and no keys are needed.
+name: Apple apps
+
+on:
+  push:
+    paths: ["apple/**", ".github/workflows/apple.yml"]
+  pull_request:
+    paths: ["apple/**", ".github/workflows/apple.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: apple-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        # GitHub's bash shell sets pipefail, so a failed build isn't hidden by `| tail`.
+        shell: bash
+        working-directory: apple
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use the newest Xcode on the runner
+        run: |
+          ls -d /Applications/Xcode*.app
+          XCODE=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+          # The apps target iOS 27 and macOS 27, so they need Xcode 27.
+          xcodebuild -version | grep -q "Xcode 27" || { echo "::error::This runner has no Xcode 27. Use a newer runner image or a self-hosted runner."; exit 1; }
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Test BoxtubeKit
+        working-directory: apple/Packages/BoxtubeKit
+        run: swift test
+
+      - name: Generate the Xcode project
+        run: xcodegen generate
+
+      - name: Build for Mac
+        run: >
+          xcodebuild -project Boxtube.xcodeproj -scheme Boxtube -destination "generic/platform=macOS"
+          -configuration Debug CODE_SIGNING_ALLOWED=NO -skipPackagePluginValidation build | tail -20
+
+      - name: Build for iPhone
+        run: >
+          xcodebuild -project Boxtube.xcodeproj -scheme Boxtube -destination "generic/platform=iOS"
+          -configuration Debug CODE_SIGNING_ALLOWED=NO -skipPackagePluginValidation build | tail -20

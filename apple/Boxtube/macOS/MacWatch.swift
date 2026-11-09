@@ -42,6 +42,10 @@ struct MacWatchView: View {
         .focusEffectDisabled()
         .onAppear { focused = true }
         .onKeyPress(characters: .init(charactersIn: "jklcnsf,.?")) { press in handleKey(press.characters, chapters: v.chapters) }
+        // YouTube's keys: Space plays or pauses, the arrows move 5 seconds. Text fields keep their own keys.
+        .onKeyPress(.space) { model.player.toggle(); return .handled }
+        .onKeyPress(.leftArrow) { model.player.skip(-5); return .handled }
+        .onKeyPress(.rightArrow) { model.player.skip(5); return .handled }
         .observing(model.store, id: v.channelId, { [cid = v.channelId] db in try Channel.fetchOne(db, key: cid) }) { channel = $0 }
         .observing(model.store, id: v.id, { [vid = v.id] db in try Q.notes(db, videoId: vid) }) { notes = $0 }
         .observing(model.store, { db in try Q.playlists(db) }) { playlists = $0 }
@@ -829,7 +833,7 @@ struct MacCommandPalette: View {
         [
             Item(id: "tb", title: "Start a 25 minute time box", keys: "⌘T", icon: "timer", tint: BX.coralText) { model.showTimeBox = true },
             Item(id: "calm", title: model.calmMode ? "Turn off Calm mode" : "Turn on Calm mode", keys: "⌘⇧C", icon: "leaf.fill", tint: BX.sageText) { model.calmMode.toggle(); section = .home },
-            Item(id: "music", title: model.mode == .music ? "Switch to Videos" : "Switch to Music", keys: "⌘M", icon: "music.note", tint: BX.amber) { model.mode = model.mode == .music ? .videos : .music; section = model.mode == .music ? .music : .home },
+            Item(id: "music", title: model.mode == .music ? "Switch to Videos" : "Switch to Music", keys: "⌥⌘M", icon: "music.note", tint: BX.amber) { model.mode = model.mode == .music ? .videos : .music; section = model.mode == .music ? .music : .home },
             Item(id: "later", title: "Open Watch later", keys: "", icon: "clock", tint: BX.teal) { section = .watchLater },
             Item(id: "float", title: "Open floating player", keys: "⌘⇧P", icon: "pip.enter", tint: Color(hex: 0x8FB0F2)) { openWindow(id: "floating") },
             Item(id: "keys", title: "Show keyboard shortcuts", keys: "?", icon: "keyboard", tint: BX.muted) { NotificationCenter.default.post(name: .boxtubeShowShortcuts, object: nil) },
