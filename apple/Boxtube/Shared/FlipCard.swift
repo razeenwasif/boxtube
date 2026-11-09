@@ -144,6 +144,12 @@ private struct VideoInfoBack: View {
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
             Text(meta).font(.system(size: 11.5)).foregroundStyle(BX.muted).lineLimit(1)
+            if let why = model.recommendationReasons[video.id] {
+                Label(why, systemImage: "sparkles")
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundStyle(BX.coralText)
+                    .lineLimit(1)
+            }
             Rectangle().fill(.white.opacity(0.08)).frame(height: 1)
             ScrollView {
                 Text(description)

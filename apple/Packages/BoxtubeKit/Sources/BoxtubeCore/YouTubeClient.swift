@@ -57,9 +57,11 @@ public actor YouTubeClient {
         return page.items.map(\.video)
     }
 
-    public func search(_ text: String, duration: String? = nil) async throws -> [Video] {
+    public func search(_ text: String, duration: String? = nil, publishedAfter: Date? = nil, order: String? = nil) async throws -> [Video] {
         var query = ["part": "snippet", "q": text, "type": "video", "maxResults": "25", "safeSearch": "moderate"]
         if let duration { query["videoDuration"] = duration }
+        if let publishedAfter { query["publishedAfter"] = ISO8601DateFormatter().string(from: publishedAfter) }
+        if let order { query["order"] = order }
         let page: Page<SearchResource> = try await get("search", query, cost: 100)
         let ids = page.items.compactMap(\.id.videoId)
         let details = try await videos(ids: ids)

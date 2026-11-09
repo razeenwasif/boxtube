@@ -78,6 +78,10 @@ struct VideoActions: View {
         let watched = (model.progressById[video.id] ?? 0) >= 0.9
         let following = model.channelIsSubscribed(video.channelId)
 
+        if let why = model.recommendationReasons[video.id] {
+            // Why Home picked it; shown as a label, not an action.
+            Section { Label(why, systemImage: "sparkles") }
+        }
         Section {
             Button { model.playNext(video) } label: { Label("Play next", systemImage: "text.line.first.and.arrowtriangle.forward") }
             Button { model.addToQueue(video) } label: { Label("Add to queue", systemImage: "text.badge.plus") }

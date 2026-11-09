@@ -1,4 +1,5 @@
 import SwiftUI
+import os
 #if os(iOS)
 import WidgetKit
 #endif
@@ -52,6 +53,8 @@ struct QueueSegment: Hashable, Sendable {
     var end: Double?
 }
 
+private let recLog = Logger(subsystem: "com.razeenwasif.boxtube", category: "recommendations")
+
 @MainActor
 @Observable
 final class AppModel {
@@ -84,6 +87,21 @@ final class AppModel {
     var tintFromVideo: Bool { didSet { defaults.set(tintFromVideo, forKey: "tintFromVideo") } }
     var displayName: String { didSet { defaults.set(displayName, forKey: "displayName") } }
     var autoplay: Bool { didSet { defaults.set(autoplay, forKey: "autoplay") } }
+    /// Lets recommendations include channels you watch but don't follow (their free feeds).
+    var discoverChannels: Bool {
+        didSet {
+            defaults.set(discoverChannels, forKey: "discoverChannels")
+            Task { await refreshRecommendations() }
+        }
+    }
+    /// Home's picks, from `Recommender`, rebuilt after a refresh rather than live, so Home doesn't reshuffle
+    /// while you're looking at it.
+    private(set) var recommendations: [Recommendation] = []
+    private(set) var recommendationReasons: [String: String] = [:]
+    /// What the last ranking had to work with, shown under the setting.
+    private(set) var recommendationStats = ""
+    private(set) var discoveryFetched = 0
+    @ObservationIgnored private var recommendationsAt: Date?
     var previewMode: PreviewMode {
         didSet { defaults.set(previewMode.rawValue, forKey: "previewMode"); if previewMode == .off { preview.stop() } }
     }
@@ -158,6 +176,7 @@ final class AppModel {
         tintFromVideo = defaults.object(forKey: "tintFromVideo") as? Bool ?? true
         displayName = defaults.string(forKey: "displayName") ?? "Jordan Diaz"
         autoplay = defaults.object(forKey: "autoplay") as? Bool ?? true
+        discoverChannels = defaults.object(forKey: "discoverChannels") as? Bool ?? true
         syncEnabled = defaults.bool(forKey: "syncEnabled")
         quotaToday = defaults.integer(forKey: "quotaToday")
         quotaDay = defaults.object(forKey: "quotaDay") as? Date
@@ -203,6 +222,7 @@ final class AppModel {
         }
         _ = try? await store.purgeWatchLater(olderThan: clearAfterWeeks)
         observeLibrary()
+        await refreshRecommendations()   // from what's already stored, before the network refresh
         #if os(macOS)
         MenuBarStatusItem.install(model: self)
         #endif
@@ -212,7 +232,39 @@ final class AppModel {
     func refresh(force: Bool = false) async {
         isRefreshing = true
         await feed.refreshSubscriptions(force: force)
+        if discoverChannels {
+            let wants = try? await store.read { db in Recommender.interests(try Q.recommendationInput(db)) }
+            let fetched = await feed.refreshDiscovery(queries: wants?.queries ?? [], categories: wants?.categories ?? [])
+            await recordQuota()
+            discoveryFetched = fetched
+            recLog.notice("discovery fetched \(fetched) channel feeds")
+        }
         isRefreshing = false
+        await refreshRecommendations()
+    }
+
+    /// Re-ranks Home from the library. The work happens on the database's reading queue, off the main thread.
+    func refreshRecommendations() async {
+        let unfollowed = discoverChannels
+        guard let (recs, stats) = try? await store.read({ db in
+            let input = try Q.recommendationInput(db, includeUnfollowed: unfollowed)
+            let recs = Recommender.rank(input)
+            let outside = input.candidates.filter { !input.subscribed.contains($0.channelId) }.count
+            let pickedOutside = recs.filter { !input.subscribed.contains($0.video.channelId) }.count
+            let waiting = try Q.discoveryChannels(db, limit: 100, olderThan: .distantFuture).count
+            return (recs, "\(input.candidates.count) candidates, \(outside) from channels you don't follow · \(input.events.count) signals · \(waiting) channels to explore · \(pickedOutside) of \(recs.count) picks from channels you don't follow")
+        }) else { return }
+        recLog.notice("recommendations: \(stats, privacy: .public)")
+        recommendationStats = stats
+        recommendationsAt = .now
+        recommendations = recs
+        recommendationReasons = Dictionary(recs.map { ($0.id, $0.reason) }, uniquingKeysWith: { a, _ in a })
+    }
+
+    /// On returning to the app: re-rank if it's been a while, so what you watched elsewhere counts.
+    func refreshRecommendationsIfStale() {
+        guard let at = recommendationsAt, Date.now.timeIntervalSince(at) > 30 * 60 else { return }
+        Task { await refreshRecommendations() }
     }
 
     private func observeLibrary() {

@@ -338,6 +338,14 @@ struct SettingsSheet: View {
                     Picker("Preview videos", selection: $model.previewMode) {
                         ForEach(PreviewMode.allCases) { Text($0.title).tag($0) }
                     }
+                    Toggle(isOn: $model.discoverChannels) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Recommend from channels you don't follow")
+                            if !model.recommendationStats.isEmpty {
+                                Text(model.recommendationStats).font(.system(size: 11)).foregroundStyle(BX.muted)
+                            }
+                        }
+                    }
                 }
                 Section {
                     GoogleAccountSection()

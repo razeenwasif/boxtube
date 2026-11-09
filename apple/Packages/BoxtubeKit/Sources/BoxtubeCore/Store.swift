@@ -129,6 +129,13 @@ public final class Store: Sendable {
                 t.column("hiddenAt", .datetime).notNull()
             }
         }
+        m.registerMigration("v7-disliked") { db in
+            // Dislikes kept locally too, as a signal for recommendations (YouTube gets them through sync).
+            try db.create(table: "disliked") { t in
+                t.primaryKey("videoId", .text)
+                t.column("dislikedAt", .datetime).notNull()
+            }
+        }
         return m
     }
 
@@ -291,12 +298,25 @@ public final class Store: Sendable {
         try await writer.write { db in _ = try HistoryEntry.deleteAll(db) }
     }
 
+    /// Records or clears a dislike. A dislike also removes a like.
+    public func setDisliked(_ videoId: String, _ on: Bool) async throws {
+        try await writer.write { db in
+            if on {
+                _ = try LikedVideo.deleteOne(db, key: videoId)
+                try db.execute(sql: "INSERT OR REPLACE INTO disliked (videoId, dislikedAt) VALUES (?, ?)", arguments: [videoId, Date.now])
+            } else {
+                try db.execute(sql: "DELETE FROM disliked WHERE videoId = ?", arguments: [videoId])
+            }
+        }
+    }
+
     public func toggleLike(_ videoId: String) async throws {
         try await writer.write { db in
             if try LikedVideo.exists(db, key: videoId) {
                 _ = try LikedVideo.deleteOne(db, key: videoId)
             } else {
                 try LikedVideo(videoId: videoId).insert(db)
+                try db.execute(sql: "DELETE FROM disliked WHERE videoId = ?", arguments: [videoId])
             }
         }
     }
@@ -557,6 +577,13 @@ public final class Store: Sendable {
 
     public func deleteNote(_ id: Int64) async throws {
         try await writer.write { db in _ = try Note.deleteOne(db, key: id) }
+    }
+
+    /// Removes cached lists whose key starts with `prefix` and that were fetched before `date`.
+    public func dropLists(prefix: String, olderThan date: Date) async throws {
+        try await writer.write { db in
+            try db.execute(sql: "DELETE FROM listCache WHERE key LIKE ? AND fetchedAt < ?", arguments: [prefix + "%", date])
+        }
     }
 
     public func cache(list key: String, videoIds: [String]) async throws {

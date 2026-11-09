@@ -100,9 +100,8 @@ extension AppModel {
     }
 
     func setDisliked(_ id: String, _ on: Bool) {
-        let liked = likedIds.contains(id)
         Task {
-            if on, liked { try? await store.toggleLike(id) }
+            try? await store.setDisliked(id, on)
             await queue(on ? .dislike : .unrate, id)
         }
     }

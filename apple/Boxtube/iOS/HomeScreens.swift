@@ -55,7 +55,7 @@ struct HomeScreen: View {
                             .padding(.horizontal, 16)
                         }
                     }
-                    ForEach(feed.filter { $0.id != newest?.id }) { v in
+                    ForEach(recommended(excluding: newest?.id)) { v in
                         HomeCard(video: v, progress: progress[v.id]).padding(.horizontal, 16).padding(.top, 26)
                     }
                     if feed.isEmpty {
@@ -90,6 +90,13 @@ struct HomeScreen: View {
             guard topic.id != "all", model.hasAPIKey else { return }
             do { try await model.feed.loadTopic(topic) } catch { topicError = error.localizedDescription }
         }
+    }
+
+    /// Boxtube's ranked picks (see Recommender), minus the featured card and anything hidden.
+    /// Before the first ranking, the newest videos from your subscriptions.
+    private func recommended(excluding featured: String?) -> [Video] {
+        let picks = model.recommendations.map(\.video).filter { $0.id != featured && !model.isHidden($0) }
+        return picks.isEmpty ? feed.filter { $0.id != featured } : picks
     }
 }
 

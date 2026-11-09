@@ -105,9 +105,12 @@ struct MacHome: View {
         }
     }
 
-    /// Unwatched videos first, newest first; partly watched next; finished last.
+    /// Boxtube's ranked picks (see Recommender), minus what's already on the page or hidden.
     private func recommended(excluding shown: Set<String>) -> [Video] {
-        feed.filter { !shown.contains($0.id) }
+        let picks = model.recommendations.map(\.video).filter { !shown.contains($0.id) && !model.isHidden($0) }
+        if !picks.isEmpty { return picks }
+        // Before the first ranking: unwatched first, newest first; partly watched next; finished last.
+        return feed.filter { !shown.contains($0.id) }
             .sorted { a, b in
                 let pa = progress[a.id] ?? 0, pb = progress[b.id] ?? 0
                 let ra = pa < 0.05 ? 0 : (pa < 0.95 ? 1 : 2), rb = pb < 0.05 ? 0 : (pb < 0.95 ? 1 : 2)

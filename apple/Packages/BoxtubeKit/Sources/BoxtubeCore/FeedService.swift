@@ -68,6 +68,69 @@ public actor FeedService {
         return report
     }
 
+    /// Finds videos beyond your subscriptions for recommendations:
+    /// - the free feeds of channels you watch, like or save from but don't follow (each at most every 6 hours);
+    /// - with an API key, what's popular in your favourite categories (1 unit each, twice a day) and recent
+    ///   videos matching your interests (a search is 100 units: at most two a day).
+    /// Returns how many new lists it fetched.
+    @discardableResult
+    public func refreshDiscovery(queries: [String] = [], categories: [String] = [], maxChannels: Int = 12,
+                                 maxAge: TimeInterval = 6 * 3600) async -> Int {
+        let ids = (try? await store.read { db in
+            try Q.discoveryChannels(db, limit: maxChannels, olderThan: Date.now.addingTimeInterval(-maxAge))
+        }) ?? []
+        var fetched = 0
+        if !ids.isEmpty {
+            let results = await withTaskGroup(of: RSSFeed.Result?.self) { group in
+                for id in ids { group.addTask { try? await RSSFeed.fetch(channelId: id) } }
+                var out: [RSSFeed.Result] = []
+                for await r in group { if let r { out.append(r) } }
+                return out
+            }
+            try? await store.saveFeeds(results.map { ($0.channel, $0.videos) })
+            fetched += results.count
+        }
+        if client.hasKey {
+            fetched += await discoverFromInterests(queries: queries, categories: categories)
+            await enrichMissingDetails()
+        }
+        return fetched
+    }
+
+    private func discoverFromInterests(queries: [String], categories: [String]) async -> Int {
+        var fetched = 0
+        func age(_ key: String) async -> TimeInterval {
+            guard let at = try? await store.read({ db in try Q.cacheAge(db, key: key) }) else { return .infinity }
+            return Date.now.timeIntervalSince(at)
+        }
+        // Old searches make way for new interests.
+        try? await store.dropLists(prefix: "rec:search:", olderThan: Date.now.addingTimeInterval(-7 * 86_400))
+
+        for category in categories.prefix(3) where category != "10" {   // music lives in Music mode
+            let key = "rec:popular:\(category)"
+            guard await age(key) > 12 * 3600, let videos = try? await client.popular(categoryId: category) else { continue }
+            try? await store.upsert(videos: videos)
+            try? await store.cache(list: key, videoIds: videos.map(\.id))
+            fetched += 1
+        }
+
+        let since = Date.now.addingTimeInterval(-86_400)
+        let searchedToday = (try? await store.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(DISTINCT key) FROM listCache WHERE key LIKE 'rec:search:%' AND fetchedAt > ?", arguments: [since])
+        }) ?? 0
+        var budget = max(0, 2 - (searchedToday ?? 0))
+        for query in queries where budget > 0 {
+            let key = "rec:search:\(query)"
+            guard await age(key) > 3 * 86_400 else { continue }
+            budget -= 1
+            guard let videos = try? await client.search(query, publishedAfter: Date.now.addingTimeInterval(-60 * 86_400), order: "relevance") else { continue }
+            try? await store.upsert(videos: videos)
+            try? await store.cache(list: key, videoIds: videos.map(\.id))
+            fetched += 1
+        }
+        return fetched
+    }
+
     /// Fills durations / categories for recent videos that came from RSS (1 unit per 50 videos).
     /// Categories also tell Boxtube which channels are music artists.
     public func enrichMissingDetails(limit: Int = 600) async {

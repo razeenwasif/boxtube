@@ -157,6 +157,14 @@ struct MacSettings: View {
             Picker("Watch later clears after", selection: $model.clearAfterWeeks) {
                 ForEach([1, 2, 4, 8], id: \.self) { Text("\($0) week\($0 == 1 ? "" : "s")").tag($0) }
             }
+            Toggle(isOn: $model.discoverChannels) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Recommend from channels you don't follow")
+                    if !model.recommendationStats.isEmpty {
+                        Text(model.recommendationStats).font(.system(size: 11)).foregroundStyle(BX.muted)
+                    }
+                }
+            }
             LabeledContent("YouTube API key", value: model.hasAPIKey ? "Added" : "Missing (apple/Config/Secrets.xcconfig)")
             Section {
                 GoogleAccountSection()
