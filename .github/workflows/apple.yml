@@ -1,12 +1,12 @@
-# Builds the iPhone and Mac apps and runs BoxtubeKit's tests on every push and pull request
-# that touches apple/. Nothing is signed and no keys are needed.
+# Builds the iPhone and Mac apps and runs BoxtubeKit's tests. Nothing is signed and no keys are needed.
+#
+# Manual for now: GitHub's macOS runners stop at Xcode 26.2 and the apps need Xcode 27.
+# Run it from the Actions tab (Apple apps → Run workflow). When GitHub adds Xcode 27, bring back:
+#   push:         { paths: ["apple/**", ".github/workflows/apple.yml"] }
+#   pull_request: { paths: ["apple/**", ".github/workflows/apple.yml"] }
 name: Apple apps
 
 on:
-  push:
-    paths: ["apple/**", ".github/workflows/apple.yml"]
-  pull_request:
-    paths: ["apple/**", ".github/workflows/apple.yml"]
   workflow_dispatch:
 
 concurrency:
@@ -23,7 +23,7 @@ jobs:
         shell: bash
         working-directory: apple
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Use the newest Xcode on the runner
         run: |
