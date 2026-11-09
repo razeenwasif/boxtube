@@ -694,7 +694,7 @@ struct MacNotesPanel: View {
                 .background(BX.ground, in: .rect(cornerRadius: 12))
                 .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(BX.coral.opacity(focused ? 0.55 : 0.25), lineWidth: 1.5))
                 HStack {
-                    Text("Notes stay on this Mac")
+                    Text(model.notesSyncLine)
                     Spacer()
                     Text("Save ⌘↩")
                 }
@@ -712,7 +712,7 @@ struct MacNotesPanel: View {
         guard !text.isEmpty else { return }
         let time = model.player.state.time
         draft = ""
-        Task { _ = try? await model.store.addNote(videoId: video.id, time: time, text: text) }
+        model.addNote(videoId: video.id, time: time, text: text)
     }
 
     private func export() {
@@ -758,7 +758,7 @@ struct MacNotesPanel: View {
                 Spacer(minLength: 0)
             }
             .contextMenu {
-                Button(role: .destructive) { if let id = note.id { Task { try? await model.store.deleteNote(id) } } } label: { Label("Delete note", systemImage: "trash") }
+                Button(role: .destructive) { model.deleteNote(note) } label: { Label("Delete note", systemImage: "trash") }
             }
         }
 

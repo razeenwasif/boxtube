@@ -80,7 +80,7 @@ struct MacRoot: View {
         .sheet(isPresented: $model.showTimeBox) { TimeBoxView().frame(width: 460, height: 760) }
         .background { PlaybackTicker() }
         .onAppear { model.openWindowAction = { [openWindow] id in openWindow(id: id) } }
-        .onChange(of: scenePhase) { _, phase in if phase != .active { model.preview.stop() } else { model.scheduleSync(); model.refreshRecommendationsIfStale() } }
+        .onChange(of: scenePhase) { _, phase in if phase != .active { model.preview.stop() } else { model.scheduleSync(); model.syncNotes(); model.refreshRecommendationsIfStale() } }
         .onChange(of: section) { _, s in
             model.watching = nil
             model.paths[.home] = []
@@ -471,6 +471,7 @@ struct MacRouteScreen: View {
         case .history: MacVideoGrid(title: "History", fetch: { db in try Q.history(db, limit: 120).map(\.video) })
         case .search(let q): MacSearch(query: q)
         case .musicLibrary: MacMusic()
+        case .notes: MacAllNotes()
         }
     }
 }

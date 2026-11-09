@@ -44,6 +44,7 @@ enum Route: Hashable {
     case history
     case search(String)
     case musicLibrary
+    case notes
 }
 
 /// A playable segment from a time box (start/end inside a video).
@@ -81,6 +82,9 @@ final class AppModel {
     #endif
     /// True while a long-press details card is up (iPhone), so the release doesn't also open the video.
     @ObservationIgnored var peekShowing = false
+    /// Notes sync through iCloud (nil until started, or when the build has no iCloud container).
+    @ObservationIgnored private(set) var noteSync: NoteSync?
+    var notesSync: NoteSync.Status = .starting
 
     // Settings
     var calmMode: Bool { didSet { defaults.set(calmMode, forKey: "calmMode"); if calmMode { preview.stop() } } }
@@ -206,6 +210,7 @@ final class AppModel {
 
     func start() async {
         WatchTogether.shared.configure(model: self)
+        startNoteSync()
         await feed.seedIfNeeded()
         #if os(iOS)
         WidgetCenter.shared.reloadAllTimelines() // so widgets redraw after an app update
@@ -435,6 +440,65 @@ final class AppModel {
         case "timebox": showTimeBox = true
         case "music": mode = .music
         default: break
+        }
+    }
+}
+
+// MARK: - Notes, synced through iCloud
+
+extension AppModel {
+    func startNoteSync() {
+        guard noteSync == nil,
+              let container = Bundle.main.object(forInfoDictionaryKey: "BoxtubeICloudContainer") as? String,
+              container.hasPrefix("iCloud."), !container.contains("$(") else { return }
+        let sync = NoteSync(
+            store: store, containerID: container,
+            onNewVideos: { [weak self] ids in Task { @MainActor in await self?.feed.enrich(videoIds: ids) } },
+            onStatus: { [weak self] status in Task { @MainActor in self?.notesSync = status } })
+        noteSync = sync
+        // iCloud pushes tell this device when another one changed a note.
+        #if os(iOS)
+        UIApplication.shared.registerForRemoteNotifications()
+        #else
+        NSApplication.shared.registerForRemoteNotifications()
+        #endif
+        Task { await sync.start() }
+    }
+
+    /// Pins a note to `time` in `videoId` and sends it to your other devices.
+    func addNote(videoId: String, time: Double, text: String) {
+        Task {
+            guard let note = try? await store.addNote(videoId: videoId, time: time, text: text) else { return }
+            await noteSync?.saved(note.uuid)
+            await noteSync?.syncNow()
+        }
+    }
+
+    func deleteNote(_ note: Note) {
+        guard let id = note.id else { return }
+        Task {
+            guard let uuid = try? await store.deleteNote(id) else { return }
+            await noteSync?.deleted(uuid)
+            await noteSync?.syncNow()
+        }
+    }
+
+    /// Picks up notes from other devices when Boxtube comes back to the front.
+    func syncNotes() {
+        Task { await noteSync?.syncNow() }
+    }
+
+    /// The line under the note box: what happens to a note once it's saved.
+    var notesSyncLine: String {
+        switch notesSync {
+        case .on, .starting:
+            #if os(macOS)
+            "Notes sync to iPhone"
+            #else
+            "Notes sync to Mac"
+            #endif
+        case .noAccount: "Sign in to iCloud to sync notes"
+        case .failed: "Notes couldn't sync; they're kept here"
         }
     }
 }

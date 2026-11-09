@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Mac. Needs a paid Apple Developer team. The iPhone's copy is Boxtube.entitlements. -->
+	<!-- SharePlay (Watch together). -->
+	<key>com.apple.developer.group-session</key>
+	<true/>
+	<!-- Notes sync through your private iCloud database; pushes tell other devices to fetch. -->
+	<key>com.apple.developer.icloud-container-identifiers</key>
+	<array>
+		<string>iCloud.$(BOXTUBE_BUNDLE_ID)</string>
+	</array>
+	<key>com.apple.developer.icloud-services</key>
+	<array>
+		<string>CloudKit</string>
+	</array>
+	<key>com.apple.developer.aps-environment</key>
+	<string>development</string>
+</dict>
+</plist>

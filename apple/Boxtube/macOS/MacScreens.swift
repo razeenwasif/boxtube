@@ -275,12 +275,7 @@ struct MacAllNotes: View {
             }
             .padding(28)
         }
-        .observing(model.store, { db in
-            let notes = try Note.order(Column("createdAt").desc).fetchAll(db)
-            let byVideo = Dictionary(grouping: notes, by: \.videoId)
-            return try byVideo.compactMap { id, n in try Video.fetchOne(db, key: id).map { ($0, n.sorted { $0.time < $1.time }) } }
-                .sorted { ($0.1.first?.createdAt ?? .distantPast) > ($1.1.first?.createdAt ?? .distantPast) }
-        }) { groups = $0 }
+        .observing(model.store, { db in try Q.noteGroups(db) }) { groups = $0.map { ($0.video, $0.notes) } }
     }
 }
 

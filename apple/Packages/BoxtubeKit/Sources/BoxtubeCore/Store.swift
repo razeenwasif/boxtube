@@ -136,6 +136,17 @@ public final class Store: Sendable {
                 t.column("dislikedAt", .datetime).notNull()
             }
         }
+        m.registerMigration("v8-note-sync") { db in
+            // Notes sync through iCloud: each note gets an id every device shares, and the sync engine
+            // keeps its place in `syncState`.
+            try db.alter(table: "note") { t in t.add(column: "uuid", .text) }
+            try db.execute(sql: "UPDATE note SET uuid = lower(hex(randomblob(16))) WHERE uuid IS NULL")
+            try db.create(index: "note_uuid", on: "note", columns: ["uuid"], unique: true)
+            try db.create(table: "syncState") { t in
+                t.primaryKey("key", .text)
+                t.column("data", .blob).notNull()
+            }
+        }
         return m
     }
 
@@ -575,8 +586,14 @@ public final class Store: Sendable {
         }
     }
 
-    public func deleteNote(_ id: Int64) async throws {
-        try await writer.write { db in _ = try Note.deleteOne(db, key: id) }
+    /// Deletes a note and returns its shared id, so the deletion can be synced.
+    @discardableResult
+    public func deleteNote(_ id: Int64) async throws -> String? {
+        try await writer.write { db in
+            let uuid = try String.fetchOne(db, sql: "SELECT uuid FROM note WHERE id = ?", arguments: [id])
+            _ = try Note.deleteOne(db, key: id)
+            return uuid
+        }
     }
 
     /// Removes cached lists whose key starts with `prefix` and that were fetched before `date`.
@@ -761,6 +778,17 @@ public enum Q {
     }
 
     public static func allNotesCount(_ db: Database) throws -> Int { try Note.fetchCount(db) }
+
+    /// Every note, grouped by video: the video with the newest note first, notes in time order.
+    /// Notes whose video isn't stored are left out.
+    public static func noteGroups(_ db: Database) throws -> [NoteGroup] {
+        let notes = try Note.order(Column("createdAt").desc).fetchAll(db)
+        let byVideo = Dictionary(grouping: notes, by: \.videoId)
+        return try byVideo.compactMap { id, n in
+            try Video.fetchOne(db, key: id).map { NoteGroup(video: $0, notes: n.sorted { $0.time < $1.time }) }
+        }
+        .sorted { ($0.newest ?? .distantPast) > ($1.newest ?? .distantPast) }
+    }
 
     public struct Stats: Sendable, Hashable {
         public var watchedThisWeek: Double

@@ -91,6 +91,7 @@ struct CommandPanel: View {
             Command(id: "calm", title: model.calmMode ? "Turn off Calm mode" : "Turn on Calm mode", hint: "", glyph: "leaf.fill", tint: BX.sageText) { model.calmMode.toggle(); model.tab = .home },
             Command(id: "mode", title: model.mode == .music ? "Switch to Videos" : "Switch to Music", hint: "", glyph: "music.note", tint: BX.amber) { model.mode = model.mode == .music ? .videos : .music; model.tab = .home },
             Command(id: "later", title: "Open Watch later", hint: "", glyph: "clock", tint: BX.teal) { model.tab = .playlists; model.paths[.playlists] = [.watchLater] },
+            Command(id: "notes", title: "Open notes", hint: "", glyph: "note.text", tint: BX.amber) { model.tab = .you; model.paths[.you] = [.notes] },
         ]
         if model.player.video != nil {
             list.append(Command(id: "chapters", title: "Jump to a chapter", hint: "", glyph: "list.bullet", tint: BX.coralText) { model.showChapterRing = true })

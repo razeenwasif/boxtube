@@ -244,7 +244,7 @@ struct NotesPanel: View {
                             Spacer(minLength: 0)
                         }
                         .contextMenu {
-                            Button(role: .destructive) { if let id = n.id { Task { try? await model.store.deleteNote(id) } } } label: { Label("Delete note", systemImage: "trash") }
+                            Button(role: .destructive) { model.deleteNote(n) } label: { Label("Delete note", systemImage: "trash") }
                         }
                     }
                 }
@@ -277,7 +277,7 @@ struct NotesPanel: View {
         guard !text.isEmpty else { return }
         let time = model.player.state.time
         draft = ""
-        Task { try? await model.store.addNote(videoId: video.id, time: time, text: text) }
+        model.addNote(videoId: video.id, time: time, text: text)
     }
 
     private var markdown: String {

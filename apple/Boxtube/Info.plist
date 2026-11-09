@@ -21,6 +21,12 @@
 	<string>$(GOOGLE_CLIENT_SECRET)</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
+	<key>BoxtubeICloudContainer</key>
+	<string>iCloud.$(BOXTUBE_BUNDLE_ID)</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>NSGroupActivitiesUsageDescription</key>
 	<string>Watch videos together with people on your FaceTime call.</string>
 </dict>

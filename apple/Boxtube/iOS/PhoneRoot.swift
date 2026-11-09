@@ -48,7 +48,7 @@ struct PhoneRoot: View {
             if let toast = model.toast { Toast(text: toast).padding(.top, 8) }
         }
         .background { PlaybackTicker() }
-        .onChange(of: scenePhase) { _, phase in if phase != .active { model.preview.stop() } else { model.scheduleSync(); model.refreshRecommendationsIfStale() } }
+        .onChange(of: scenePhase) { _, phase in if phase != .active { model.preview.stop() } else { model.scheduleSync(); model.syncNotes(); model.refreshRecommendationsIfStale() } }
         .onAppear { live.attach(to: model) }
     }
 
@@ -77,6 +77,7 @@ struct RouteScreen: View {
         case .history: VideoListScreen(title: "History", kind: .history)
         case .search(let q): SearchResultsScreen(query: q)
         case .musicLibrary: MusicLibraryScreen()
+        case .notes: NotesScreen()
         }
     }
 }

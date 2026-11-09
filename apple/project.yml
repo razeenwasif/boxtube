@@ -50,6 +50,7 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_FILE: Boxtube/Info.plist
         CODE_SIGN_ENTITLEMENTS: Boxtube/Boxtube.entitlements
+        "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": Boxtube/Boxtube-macOS.entitlements
         INFOPLIST_KEY_CFBundleDisplayName: Boxtube
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES

@@ -546,7 +546,9 @@ struct ProfileScreen: View {
                 HStack(spacing: 10) {
                     stat(Format.minutes(stats?.watchedThisWeek ?? 0), "Watched this week")
                     stat("\(stats?.playlists ?? 0)", "Playlists")
-                    stat("\(stats?.notes ?? 0)", "Notes")
+                    Button { model.push(.notes) } label: { stat("\(stats?.notes ?? 0)", "Notes") }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Shows all your notes")
                 }
                 .padding(.horizontal, 16).padding(.top, 22)
 
@@ -576,6 +578,7 @@ struct ProfileScreen: View {
                 VStack(spacing: 0) {
                     row("Watch later", icon: .clock, tint: BX.amber, first: true) { model.push(.watchLater) }
                     row("Liked videos", icon: .heart, tint: BX.coralText) { model.push(.liked) }
+                    row("Notes", icon: .comment, tint: BX.amber, detail: (stats?.notes ?? 0) > 0 ? "\(stats?.notes ?? 0)" : "") { model.push(.notes) }
                     row("Calm mode", icon: .leaf, tint: BX.sageText, detail: model.calmMode ? "On" : "Off") { model.calmMode.toggle() }
                     row("Music mode", icon: .music, tint: Color(hex: 0xB3A1FF), detail: model.mode == .music ? "On" : "Off") { model.mode = model.mode == .music ? .videos : .music }
                 }

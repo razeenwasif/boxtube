@@ -184,19 +184,29 @@ public struct OutboxOp: Codable, Hashable, Identifiable, Sendable, FetchableReco
 public struct Note: Codable, Hashable, Identifiable, Sendable, FetchableRecord, MutablePersistableRecord {
     public static let databaseTableName = "note"
     public var id: Int64?
+    /// Shared by every device the note syncs to (its iCloud record name).
+    public var uuid: String
     public var videoId: String
     public var time: Double
     public var text: String
     public var createdAt: Date
 
-    public init(id: Int64? = nil, videoId: String, time: Double, text: String, createdAt: Date = .now) {
-        self.id = id; self.videoId = videoId; self.time = time; self.text = text; self.createdAt = createdAt
+    public init(id: Int64? = nil, uuid: String = UUID().uuidString.lowercased(), videoId: String, time: Double, text: String, createdAt: Date = .now) {
+        self.id = id; self.uuid = uuid; self.videoId = videoId; self.time = time; self.text = text; self.createdAt = createdAt
     }
 
     public mutating func didInsert(_ inserted: InsertionSuccess) { id = inserted.rowID }
 }
 
 // MARK: - Joined rows used by screens
+
+public struct NoteGroup: Hashable, Identifiable, Sendable {
+    public var video: Video
+    public var notes: [Note]
+    public var id: String { video.id }
+    public var newest: Date? { notes.map(\.createdAt).max() }
+    public init(video: Video, notes: [Note]) { self.video = video; self.notes = notes }
+}
 
 public struct WatchLaterRow: Hashable, Identifiable, Sendable {
     public var entry: WatchLaterEntry
