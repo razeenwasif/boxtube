@@ -2,7 +2,7 @@
 # Build Boxtube and install it.
 #
 #   scripts/install.sh            iPhone and Mac
-#   scripts/install.sh iphone     just the iPhone (rerun every 7 days on a free Apple ID)
+#   scripts/install.sh iphone     just the iPhone (rerun yearly on a paid team, weekly on a free Apple ID)
 #   scripts/install.sh mac        just the Mac, into /Applications
 #
 # The iPhone is found automatically (first paired physical iPhone). To pick one, set
@@ -28,7 +28,7 @@ mkdir -p build
 
 build() { # scheme destination configuration
     xcodebuild -project Boxtube.xcodeproj -scheme Boxtube -destination "$2" -configuration "$3" \
-        -derivedDataPath build -allowProvisioningUpdates -skipPackagePluginValidation build >>"$log" 2>&1 \
+        -derivedDataPath build -allowProvisioningUpdates -allowProvisioningDeviceRegistration -skipPackagePluginValidation build >>"$log" 2>&1 \
         || { grep -E "error:" "$log" | head -10 >&2; fail "Build failed. Full log: apple/$log"; }
 }
 
@@ -62,8 +62,10 @@ install_iphone() {
     say "Installing on $name"
     xcrun devicectl device install app --device "$udid" build/Build/Products/Debug-iphoneos/Boxtube.app >>"$log" 2>&1 \
         || fail "Install failed (is the phone unlocked?). Log: apple/$log"
-    local expiry; expiry="$(date -v+7d '+%a %-d %b')"
-    say "Boxtube is on $name. With a free Apple ID it runs until about $expiry; rerun this script before then."
+    # A paid team's profile lasts a year; a free Apple ID's lasts 7 days.
+    local expiry; expiry="$(security cms -D -i build/Build/Products/Debug-iphoneos/Boxtube.app/embedded.mobileprovision 2>/dev/null \
+        | plutil -extract ExpirationDate raw -o - - 2>/dev/null | cut -c1-10)"
+    say "Boxtube is on $name. Its signing profile runs until ${expiry:-unknown}; rerun this script before then."
 }
 
 install_mac() {

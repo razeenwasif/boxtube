@@ -2,7 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- SharePlay (Watch together) needs com.apple.developer.group-session = true,
-	     which personal (free) teams can't sign. Add it back on a paid Apple Developer team. -->
+	<!-- SharePlay (Watch together). Needs a paid Apple Developer team. -->
+	<key>com.apple.developer.group-session</key>
+	<true/>
 </dict>
 </plist>
