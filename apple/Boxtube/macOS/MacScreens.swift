@@ -155,6 +155,8 @@ struct MacPlaylists: View {
     @State private var playlists: [PlaylistSummary] = []
     @State private var newTitle = ""
     @State private var toDelete: Playlist?
+    @State private var toPublish: PlaylistSummary?
+    @State private var publishing: Set<String> = []
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
@@ -168,9 +170,10 @@ struct MacPlaylists: View {
                     ForEach(playlists) { p in
                         Button { model.push(.playlist(p.id)) } label: { StackedCoverMac(summary: p) }
                             .buttonStyle(.plain)
-                            .contextMenu {
-                                Button(p.playlist.isMusic ? "Remove from Music" : "Show in Music") { Task { try? await model.store.setPlaylistMusic(p.id, !p.playlist.isMusic) } }
-                                Button("Delete…", role: .destructive) { toDelete = p.playlist }
+                            .contextMenu { PlaylistActions(summary: p, publishing: publishing.contains(p.id), toDelete: $toDelete, toPublish: $toPublish) }
+                            .overlay(alignment: .bottomTrailing) {
+                                PlaylistMoreButton(summary: p, publishing: publishing.contains(p.id), toDelete: $toDelete, toPublish: $toPublish)
+                                    .offset(x: 4, y: 2)
                             }
                     }
                 }
@@ -178,7 +181,9 @@ struct MacPlaylists: View {
             .padding(28)
         }
         .playlistDeleteDialog($toDelete)
+        .playlistPublishDialog($toPublish)
         .observing(model.store, { db in try Q.playlists(db) }) { playlists = $0 }
+        .observing(model.store, { db in try Q.publishingPlaylists(db) }) { publishing = $0 }
     }
 }
 
@@ -193,8 +198,9 @@ struct StackedCoverMac: View {
                 if let cover = summary.cover { VideoThumbnail(cover, radius: 14, showDuration: false) }
                 else { ArtView(seed: summary.playlist.id, title: summary.playlist.title).aspectRatio(16 / 9, contentMode: .fit).clipShape(.rect(cornerRadius: 14)) }
             }
-            Text(summary.playlist.title).font(.system(size: 14, weight: .semibold)).padding(.top, 9)
-            Text("\(summary.count) videos").font(.system(size: 12)).foregroundStyle(BX.muted)
+            // Room on the right for the card's ⋯ button.
+            Text(summary.playlist.title).font(.system(size: 14, weight: .semibold)).lineLimit(1).padding(.top, 9).padding(.trailing, 30)
+            Text("\(summary.count) videos").font(.system(size: 12)).foregroundStyle(BX.muted).padding(.trailing, 30)
         }
     }
 }
@@ -329,7 +335,7 @@ struct MacSearch: View {
             VStack(alignment: .leading, spacing: 20) {
                 LargeTitle("“\(query)”")
                 if let error { HintCard(icon: "key", title: "Search unavailable", message: error) }
-                LazyVGrid(columns: gridColumns, spacing: 28) { ForEach(results) { VideoCard(video: $0) } }
+                LazyVGrid(columns: gridColumns, spacing: 28) { ForEach(results.filter { !model.isHidden($0) }) { VideoCard(video: $0) } }
             }
             .padding(28)
         }

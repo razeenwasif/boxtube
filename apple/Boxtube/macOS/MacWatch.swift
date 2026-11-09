@@ -324,20 +324,24 @@ struct MacWatchView: View {
             }
             .padding(.top, 4).padding(.horizontal, 2)
             ForEach(next) { n in
-                Button { model.open(n) } label: {
-                    HStack(alignment: .top, spacing: 12) {
-                        VideoThumbnail(n, radius: 11).frame(width: 168)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(n.title).font(.system(size: 13.5, weight: .semibold)).lineSpacing(1.5).lineLimit(2).multilineTextAlignment(.leading)
-                            Text(n.channelTitle).font(.system(size: 12)).foregroundStyle(muted).lineLimit(1)
-                            Text([Format.views(n.viewCount), Format.ago(n.publishedAt)].compactMap { $0 }.joined(separator: " · "))
-                                .font(.system(size: 12)).foregroundStyle(muted).lineLimit(1)
+                HStack(alignment: .top, spacing: 0) {
+                    Button { model.open(n) } label: {
+                        HStack(alignment: .top, spacing: 12) {
+                            VideoThumbnail(n, radius: 11).frame(width: 168)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(n.title).font(.system(size: 13.5, weight: .semibold)).lineSpacing(1.5).lineLimit(2).multilineTextAlignment(.leading)
+                                Text(n.channelTitle).font(.system(size: 12)).foregroundStyle(muted).lineLimit(1)
+                                Text([Format.views(n.viewCount), Format.ago(n.publishedAt)].compactMap { $0 }.joined(separator: " · "))
+                                    .font(.system(size: 12)).foregroundStyle(muted).lineLimit(1)
+                            }
+                            Spacer(minLength: 0)
                         }
-                        Spacer(minLength: 0)
+                        .contentShape(Rectangle())
                     }
-                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
+                    VideoMoreButton(video: n, size: 14).padding(.top, -6).padding(.trailing, -8)
                 }
-                .buttonStyle(.plain)
+                .videoContextMenu(n)
             }
         }
     }

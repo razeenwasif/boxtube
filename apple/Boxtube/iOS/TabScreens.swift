@@ -352,6 +352,7 @@ struct SettingsSheet: View {
                     Text(model.hasAPIKey ? "Search, topics and video lengths are on." : "Subscriptions work without a key. Add one in apple/Config/Secrets.xcconfig for search, topics and video lengths.")
                 }
                 Section {
+                    HiddenVideosRow()
                     Button("Clear watch history", role: .destructive) { Task { try? await model.store.clearHistory() } }
                 }
             }

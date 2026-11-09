@@ -118,6 +118,17 @@ public final class Store: Sendable {
             // YouTube playlists you removed from Boxtube, so an import doesn't bring them back.
             try db.create(table: "hiddenPlaylist") { t in t.primaryKey("id", .text) }
         }
+        m.registerMigration("v6-not-interested") { db in
+            // "Not interested" videos and "Don't recommend" channels, left out of Home, topics, search and Shorts.
+            try db.create(table: "hiddenVideo") { t in
+                t.primaryKey("id", .text)
+                t.column("hiddenAt", .datetime).notNull()
+            }
+            try db.create(table: "hiddenChannel") { t in
+                t.primaryKey("id", .text)
+                t.column("hiddenAt", .datetime).notNull()
+            }
+        }
         return m
     }
 
@@ -363,6 +374,40 @@ public final class Store: Sendable {
         }
     }
 
+    // MARK: Not interested, watched
+
+    public func hideVideo(_ id: String) async throws {
+        try await writer.write { db in
+            try db.execute(sql: "INSERT OR REPLACE INTO hiddenVideo (id, hiddenAt) VALUES (?, ?)", arguments: [id, Date.now])
+        }
+    }
+
+    public func hideChannel(_ id: String) async throws {
+        try await writer.write { db in
+            try db.execute(sql: "INSERT OR REPLACE INTO hiddenChannel (id, hiddenAt) VALUES (?, ?)", arguments: [id, Date.now])
+        }
+    }
+
+    /// Shows every "Not interested" video and "Don't recommend" channel again.
+    public func unhideAll() async throws {
+        try await writer.write { db in
+            try db.execute(sql: "DELETE FROM hiddenVideo")
+            try db.execute(sql: "DELETE FROM hiddenChannel")
+        }
+    }
+
+    /// Marks a video watched (full progress) or unwatched (no history).
+    public func setWatched(_ video: Video, _ watched: Bool) async throws {
+        try await writer.write { db in
+            if watched {
+                let d = Double(video.durationSeconds ?? 1)
+                try HistoryEntry(videoId: video.id, positionSeconds: d, durationSeconds: d).save(db)
+            } else {
+                _ = try HistoryEntry.deleteOne(db, key: video.id)
+            }
+        }
+    }
+
     /// Lets imports bring back YouTube playlists you removed from Boxtube.
     public func unhidePlaylists() async throws {
         try await writer.write { db in try db.execute(sql: "DELETE FROM hiddenPlaylist") }
@@ -503,6 +548,7 @@ public enum Q {
         try Video.fetchAll(db, sql: """
             SELECT video.* FROM video JOIN channel ON channel.id = video.channelId
             WHERE channel.isSubscribed = 1 AND video.isShort = 0 AND channel.isMusic = ?
+              AND video.id NOT IN (SELECT id FROM hiddenVideo)
             ORDER BY video.publishedAt DESC LIMIT ?
             """, arguments: [music, limit])
     }
@@ -511,6 +557,7 @@ public enum Q {
         try Video.fetchAll(db, sql: """
             SELECT video.* FROM video LEFT JOIN channel ON channel.id = video.channelId
             WHERE video.isShort = 1 AND (channel.isSubscribed = 1 OR video.id IN (SELECT videoId FROM listCache WHERE key = 'shorts'))
+              AND video.id NOT IN (SELECT id FROM hiddenVideo) AND video.channelId NOT IN (SELECT id FROM hiddenChannel)
             ORDER BY video.publishedAt DESC LIMIT ?
             """, arguments: [limit])
     }
@@ -518,7 +565,8 @@ public enum Q {
     public static func cachedList(_ db: Database, key: String) throws -> [Video] {
         try Video.fetchAll(db, sql: """
             SELECT video.* FROM listCache JOIN video ON video.id = listCache.videoId
-            WHERE listCache.key = ? ORDER BY listCache.position
+            WHERE listCache.key = ? AND video.id NOT IN (SELECT id FROM hiddenVideo) AND video.channelId NOT IN (SELECT id FROM hiddenChannel)
+            ORDER BY listCache.position
             """, arguments: [key])
     }
 
@@ -618,6 +666,18 @@ public enum Q {
         let all = try OutboxOp.fetchAll(db)
         let failed = all.filter { $0.attempts >= SyncService.maxAttempts }
         return OutboxSummary(waiting: all.count - failed.count, failed: failed.count, lastError: failed.last?.lastError)
+    }
+
+    public struct HiddenSets: Sendable, Equatable {
+        public var videos: Set<String> = []
+        public var channels: Set<String> = []
+        public init(videos: Set<String> = [], channels: Set<String> = []) { self.videos = videos; self.channels = channels }
+        public var isEmpty: Bool { videos.isEmpty && channels.isEmpty }
+    }
+
+    public static func hidden(_ db: Database) throws -> HiddenSets {
+        HiddenSets(videos: Set(try String.fetchAll(db, sql: "SELECT id FROM hiddenVideo")),
+                   channels: Set(try String.fetchAll(db, sql: "SELECT id FROM hiddenChannel")))
     }
 
     public static func hiddenPlaylistCount(_ db: Database) throws -> Int {

@@ -227,6 +227,7 @@ public struct PlaylistSummary: Hashable, Identifiable, Sendable {
     public var count: Int
     public var cover: Video?
     public var id: String { playlist.id }
+    public init(playlist: Playlist, count: Int, cover: Video? = nil) { self.playlist = playlist; self.count = count; self.cover = cover }
 }
 
 // MARK: - Chapters

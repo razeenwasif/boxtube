@@ -235,19 +235,22 @@ private struct FreshCard: View {
                 }
             }
             ForEach(videos) { v in
-                Button { model.open(v) } label: {
-                    HStack(alignment: .top, spacing: 12) {
-                        VideoThumbnail(v, radius: 10).frame(width: 128)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(v.title).font(.system(size: 13, weight: .semibold)).lineLimit(2).multilineTextAlignment(.leading)
-                            Text("\(v.channelTitle) · \(Format.ago(v.publishedAt))").font(.system(size: 12)).foregroundStyle(BX.muted).lineLimit(1)
+                HStack(alignment: .top, spacing: 0) {
+                    Button { model.open(v) } label: {
+                        HStack(alignment: .top, spacing: 12) {
+                            VideoThumbnail(v, radius: 10).frame(width: 128)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(v.title).font(.system(size: 13, weight: .semibold)).lineLimit(2).multilineTextAlignment(.leading)
+                                Text("\(v.channelTitle) · \(Format.ago(v.publishedAt))").font(.system(size: 12)).foregroundStyle(BX.muted).lineLimit(1)
+                            }
+                            .padding(.top, 1)
+                            Spacer(minLength: 0)
                         }
-                        .padding(.top, 1)
-                        Spacer(minLength: 0)
+                        .contentShape(Rectangle())
                     }
-                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
+                    VideoMoreButton(video: v, size: 14).padding(.top, -6).padding(.trailing, -8)
                 }
-                .buttonStyle(.plain)
                 .videoContextMenu(v)
             }
             Spacer(minLength: 0)
@@ -268,31 +271,37 @@ struct MacVideoCard: View {
     @State private var channel: Channel?
 
     var body: some View {
-        Button { model.open(video) } label: {
-            VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 12) {
+            Button { model.open(video) } label: {
                 VideoThumbnail(video, radius: 14, progress: progress)
                     .videoPreview(video, cornerRadius: 14)
-                HStack(alignment: .top, spacing: 10) {
-                    ChannelAvatar(title: video.channelTitle, url: channel?.avatarURL, size: 32)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(video.title)
-                            .font(.system(size: 14, weight: .semibold))
-                            .lineSpacing(1.5)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.leading)
-                        Text(video.channelTitle).font(.system(size: 12.5)).foregroundStyle(BX.muted)
-                        Text([Format.views(video.viewCount), Format.ago(video.publishedAt)].compactMap { $0 }.joined(separator: " · "))
-                            .font(.system(size: 12.5)).foregroundStyle(BX.muted)
-                    }
-                    Spacer(minLength: 0)
-                }
             }
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(video.title), \(video.channelTitle)")
+            HStack(alignment: .top, spacing: 4) {
+                Button { model.open(video) } label: {
+                    HStack(alignment: .top, spacing: 10) {
+                        ChannelAvatar(title: video.channelTitle, url: channel?.avatarURL, size: 32)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(video.title)
+                                .font(.system(size: 14, weight: .semibold))
+                                .lineSpacing(1.5)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                            Text(video.channelTitle).font(.system(size: 12.5)).foregroundStyle(BX.muted)
+                            Text([Format.views(video.viewCount), Format.ago(video.publishedAt)].compactMap { $0 }.joined(separator: " · "))
+                                .font(.system(size: 12.5)).foregroundStyle(BX.muted)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityHidden(true)
+                VideoMoreButton(video: video).padding(.top, -6)
+            }
         }
-        .buttonStyle(.plain)
         .videoContextMenu(video)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(video.title), \(video.channelTitle)")
         .observing(model.store, id: video.channelId, { [id = video.channelId] db in try Channel.fetchOne(db, key: id) }) { channel = $0 }
     }
 }

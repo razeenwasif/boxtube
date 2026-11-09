@@ -337,18 +337,26 @@ struct WatchScreen: View {
     }
 
     private func upNextCard(_ n: Video) -> some View {
-        Button { model.open(n, present: false); current = n } label: {
-            VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 8) {
+            Button { model.open(n, present: false); current = n } label: {
                 VideoThumbnail(n, radius: 18, inset: 10)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(n.title).font(.system(size: 14.5, weight: .semibold)).lineLimit(2).multilineTextAlignment(.leading)
-                    Text([n.channelTitle, Format.views(n.viewCount), Format.ago(n.publishedAt)].compactMap { $0 }.joined(separator: " · "))
-                        .font(.system(size: 12)).foregroundStyle(BX.muted).lineLimit(1)
-                }
-                .padding(.horizontal, 2)
             }
+            .buttonStyle(.plain)
+            HStack(alignment: .top, spacing: 4) {
+                Button { model.open(n, present: false); current = n } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(n.title).font(.system(size: 14.5, weight: .semibold)).lineLimit(2).multilineTextAlignment(.leading)
+                        Text([n.channelTitle, Format.views(n.viewCount), Format.ago(n.publishedAt)].compactMap { $0 }.joined(separator: " · "))
+                            .font(.system(size: 12)).foregroundStyle(BX.muted).lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                VideoMoreButton(video: n, size: 18).padding(.top, -6)
+            }
+            .padding(.horizontal, 2)
         }
-        .buttonStyle(.plain)
         .videoContextMenu(n)
     }
 }

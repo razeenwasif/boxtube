@@ -168,23 +168,7 @@ struct HomeCard: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                Menu {
-                    Button { model.toggleWatchLater(video.id) } label: {
-                        Label(model.watchLaterIds.contains(video.id) ? "Remove from Watch later" : "Save to Watch later", systemImage: "clock")
-                    }
-                    Button { model.toggleLike(video.id) } label: { Label(model.likedIds.contains(video.id) ? "Unlike" : "Like", systemImage: "heart") }
-                    Menu {
-                        ForEach(playlists) { p in Button(p.playlist.title) { model.add(video.id, to: p.playlist) } }
-                    } label: { Label("Add to playlist", systemImage: "text.badge.plus") }
-                    ShareLink(item: video.watchURL) { Label("Share", systemImage: "square.and.arrow.up") }
-                    Button { model.push(.channel(video.channelId)) } label: { Label("Go to \(video.channelTitle)", systemImage: "person.crop.square") }
-                } label: {
-                    MoreDots(vertical: true, size: 18).foregroundStyle(BX.muted).frame(width: 32, height: 32).contentShape(Rectangle())
-                }
-                .menuStyle(.button)
-                .buttonStyle(.plain)
-                .menuIndicator(.hidden)
-                .accessibilityLabel("More options")
+                VideoMoreButton(video: video, size: 18)
             }
             .padding(.horizontal, 4).padding(.top, 12)
         }
@@ -287,7 +271,7 @@ struct SearchResultsScreen: View {
             LazyVStack(alignment: .leading, spacing: 18) {
                 HStack { BackButton(); Text("“\(query)”").font(.system(size: 20, weight: .bold)); Spacer() }
                 if let error { HintCard(icon: "key", title: "Search unavailable", message: error) }
-                ForEach(results) { VideoRow(video: $0) }
+                ForEach(results.filter { !model.isHidden($0) }) { VideoRow(video: $0) }
             }
             .padding(.horizontal, 16).padding(.top, 8)
         }

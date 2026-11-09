@@ -155,6 +155,7 @@ struct MacSettings: View {
                          ? "Likes, subscriptions, playlist edits and new playlists go to YouTube; each change uses 50 of your 10,000 daily quota units. Deleting a playlist only removes it from Boxtube."
                          : "Boxtube copies your subscriptions, playlists and liked videos. Turn on sync to send changes you make here back to YouTube.")
             }
+            HiddenVideosRow()
             Button("Clear watch history", role: .destructive) { Task { try? await model.store.clearHistory() } }
         }
         .formStyle(.grouped)

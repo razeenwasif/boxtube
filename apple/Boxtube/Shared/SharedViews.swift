@@ -32,33 +32,39 @@ struct VideoCard: View {
     var action: (() -> Void)? = nil
 
     var body: some View {
-        Button { action?() ?? model.open(video) } label: {
-            VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 12) {
+            Button { action?() ?? model.open(video) } label: {
                 VideoThumbnail(video, radius: 20, progress: progress)
                     .saturation(muted ? 0.45 : 1)
                     .macPreview(video, cornerRadius: 20, enabled: !muted)
-                HStack(alignment: .top, spacing: 12) {
-                    if !muted { ChannelAvatar(title: video.channelTitle, size: 36) }
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(video.title)
-                            .font(.system(size: 15.5, weight: .semibold))
-                            .lineLimit(2)
-                            .multilineTextAlignment(.leading)
-                        Text(meta).font(.system(size: 12.5)).foregroundStyle(BX.muted).lineLimit(1)
-                    }
-                    Spacer(minLength: 0)
-                    if muted, let d = video.durationSeconds {
-                        Text(Format.minutes(Double(d))).font(.system(size: 13, weight: .semibold)).foregroundStyle(BX.muted)
-                    }
-                }
-                .padding(.horizontal, 4)
             }
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(video.title), \(video.channelTitle)")
+            HStack(alignment: .top, spacing: 12) {
+                Button { action?() ?? model.open(video) } label: {
+                    HStack(alignment: .top, spacing: 12) {
+                        if !muted { ChannelAvatar(title: video.channelTitle, size: 36) }
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(video.title)
+                                .font(.system(size: 15.5, weight: .semibold))
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                            Text(meta).font(.system(size: 12.5)).foregroundStyle(BX.muted).lineLimit(1)
+                        }
+                        Spacer(minLength: 0)
+                        if muted, let d = video.durationSeconds {
+                            Text(Format.minutes(Double(d))).font(.system(size: 13, weight: .semibold)).foregroundStyle(BX.muted)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityHidden(true)
+                VideoMoreButton(video: video).padding(.top, -4)
+            }
+            .padding(.leading, 4)
         }
-        .buttonStyle(.plain)
         .videoContextMenu(video)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(video.title), \(video.channelTitle)")
     }
 
     private var meta: String {
@@ -76,21 +82,24 @@ struct VideoRow: View {
     var action: (() -> Void)?
 
     var body: some View {
-        Button { action?() ?? model.open(video) } label: {
-            HStack(alignment: .top, spacing: 12) {
-                VideoThumbnail(video, radius: 12, progress: progress)
-                    .frame(width: thumbWidth)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(video.title).font(.system(size: 14, weight: .semibold)).lineLimit(2).multilineTextAlignment(.leading)
-                    Text(video.channelTitle).font(.system(size: 12)).foregroundStyle(BX.muted)
-                    Text(subtitle ?? [Format.views(video.viewCount), Format.ago(video.publishedAt)].compactMap { $0 }.joined(separator: " · "))
-                        .font(.system(size: 12)).foregroundStyle(BX.muted)
+        HStack(alignment: .top, spacing: 2) {
+            Button { action?() ?? model.open(video) } label: {
+                HStack(alignment: .top, spacing: 12) {
+                    VideoThumbnail(video, radius: 12, progress: progress)
+                        .frame(width: thumbWidth)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(video.title).font(.system(size: 14, weight: .semibold)).lineLimit(2).multilineTextAlignment(.leading)
+                        Text(video.channelTitle).font(.system(size: 12)).foregroundStyle(BX.muted)
+                        Text(subtitle ?? [Format.views(video.viewCount), Format.ago(video.publishedAt)].compactMap { $0 }.joined(separator: " · "))
+                            .font(.system(size: 12)).foregroundStyle(BX.muted)
+                    }
+                    Spacer(minLength: 0)
                 }
-                Spacer(minLength: 0)
+                .contentShape(Rectangle())
             }
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            VideoMoreButton(video: video).padding(.top, -4)
         }
-        .buttonStyle(.plain)
         .videoContextMenu(video)
     }
 }
@@ -126,25 +135,11 @@ struct ShortCard: View {
 // MARK: - Context menu shared by every video
 
 struct VideoMenu: ViewModifier {
-    @Environment(AppModel.self) private var model
     var video: Video
-    @State private var playlists: [PlaylistSummary] = []
 
     func body(content: Content) -> some View {
         content.contextMenu {
-            Button { model.toggleWatchLater(video.id) } label: {
-                Label(model.watchLaterIds.contains(video.id) ? "Remove from Watch later" : "Save to Watch later", systemImage: "clock")
-            }
-            Button { model.toggleLike(video.id) } label: {
-                Label(model.likedIds.contains(video.id) ? "Unlike" : "Like", systemImage: model.likedIds.contains(video.id) ? "heart.slash" : "heart")
-            }
-            Menu {
-                ForEach(playlists) { p in
-                    Button(p.playlist.title) { model.add(video.id, to: p.playlist) }
-                }
-            } label: { Label("Add to playlist", systemImage: "text.badge.plus") }
-            ShareLink(item: video.watchURL) { Label("Share", systemImage: "square.and.arrow.up") }
-            Button { model.push(.channel(video.channelId)) } label: { Label("Go to \(video.channelTitle)", systemImage: "person.crop.square") }
+            VideoActions(video: video)
         } preview: {
             VStack(alignment: .leading, spacing: 8) {
                 VideoThumbnail(video, radius: 12)
@@ -154,7 +149,6 @@ struct VideoMenu: ViewModifier {
             .padding(12)
             .frame(width: 320)
         }
-        .observing(model.store, { db in try Q.playlists(db) }) { playlists = $0 }
     }
 }
 

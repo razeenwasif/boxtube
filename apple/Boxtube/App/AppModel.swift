@@ -101,6 +101,12 @@ final class AppModel {
 
     // Library state mirrored for quick checks
     var likedIds: Set<String> = []
+    /// Videos you chose with Play next / Add to queue; they play before Autoplay's picks.
+    var userQueue: [Video] = []
+    var playlistsCache: [PlaylistSummary] = []
+    var progressById: [String: Double] = [:]
+    var hidden = Q.HiddenSets()
+    var subscribedIds: Set<String> = []
     var watchLaterIds: Set<String> = []
     var palette: VideoPalette = .standard
 
@@ -162,7 +168,7 @@ final class AppModel {
         }
         player.onEnded = { [weak self] _ in
             guard let self else { return }
-            if self.autoplay || !self.segments.isEmpty { self.advanceQueue() }
+            if self.autoplay || !self.segments.isEmpty || !self.userQueue.isEmpty { self.advanceQueue() }
         }
         preview.attach(self)
     }
@@ -203,6 +209,10 @@ final class AppModel {
         let liked = store.values { db in try Q.likedIds(db) }
         let later = store.values { db in try Q.watchLaterIds(db) }
         let outbox = store.values { db in try Q.outboxSummary(db) }
+        let lists = store.values { db in try Q.playlists(db) }
+        let progress = store.values { db in try Q.progress(db) }
+        let hiddenSets = store.values { db in try Q.hidden(db) }
+        let following = store.values { db in Set(try String.fetchAll(db, sql: "SELECT id FROM channel WHERE isSubscribed = 1")) }
         observers = [
             Task { [weak self] in
                 do { for try await ids in liked { self?.likedIds = ids } } catch {}
@@ -212,6 +222,18 @@ final class AppModel {
             },
             Task { [weak self] in
                 do { for try await summary in outbox { self?.sync.summary = summary } } catch {}
+            },
+            Task { [weak self] in
+                do { for try await value in lists { self?.playlistsCache = value } } catch {}
+            },
+            Task { [weak self] in
+                do { for try await value in progress { self?.progressById = value } } catch {}
+            },
+            Task { [weak self] in
+                do { for try await value in hiddenSets { self?.hidden = value } } catch {}
+            },
+            Task { [weak self] in
+                do { for try await value in following { self?.subscribedIds = value } } catch {}
             },
         ]
     }
@@ -274,6 +296,12 @@ final class AppModel {
             player.load(next.video, at: next.start)
             if watching != nil { watching = next.video }
             updatePalette(for: next.video)
+        } else if !userQueue.isEmpty {
+            let next = userQueue.removeFirst()
+            activeSegmentEnd = nil
+            player.load(next)
+            if watching != nil { watching = next }
+            updatePalette(for: next)
         } else if player.playNextInQueue() {
             activeSegmentEnd = nil
         } else {

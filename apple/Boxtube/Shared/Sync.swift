@@ -231,19 +231,92 @@ private struct PlaylistDeleteDialog: ViewModifier {
     }
 }
 
-/// "Publish to YouTube" for a playlist that's only in Boxtube, with what it costs.
+/// The actions for one playlist, shared by its ⋯ menu and its right-click / long-press menu.
+struct PlaylistActions: View {
+    @Environment(AppModel.self) private var model
+    var summary: PlaylistSummary
+    var publishing: Bool
+    @Binding var toDelete: Playlist?
+    @Binding var toPublish: PlaylistSummary?
+
+    var body: some View {
+        let p = summary.playlist
+        Button { Task { try? await model.store.setPlaylistMusic(p.id, !p.isMusic) } } label: {
+            Label(p.isMusic ? "Remove from Music" : "Show in Music", systemImage: p.isMusic ? "music.note.slash" : "music.note")
+        }
+        if model.syncEnabled, Store.isLocalPlaylist(p.id), !publishing {
+            Button { toPublish = summary } label: { Label("Publish to YouTube…", systemImage: "arrow.up.circle") }
+        }
+        Divider()
+        Button(role: .destructive) { toDelete = p } label: { Label("Delete…", systemImage: "trash") }
+    }
+}
+
+/// The ⋯ button on a playlist card.
+struct PlaylistMoreButton: View {
+    var summary: PlaylistSummary
+    var publishing: Bool
+    @Binding var toDelete: Playlist?
+    @Binding var toPublish: PlaylistSummary?
+
+    var body: some View {
+        Menu {
+            PlaylistActions(summary: summary, publishing: publishing, toDelete: $toDelete, toPublish: $toPublish)
+        } label: {
+            MoreDots(size: 16)
+                .foregroundStyle(BX.muted)
+                .frame(width: 30, height: 30)
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .accessibilityLabel("More for \(summary.playlist.title)")
+        #if os(macOS)
+        .help("More")
+        #endif
+    }
+}
+
+extension View {
+    /// Confirms publishing a Boxtube-only playlist, with what it costs.
+    func playlistPublishDialog(_ summary: Binding<PlaylistSummary?>) -> some View { modifier(PlaylistPublishDialog(summary: summary)) }
+}
+
+private struct PlaylistPublishDialog: ViewModifier {
+    @Environment(AppModel.self) private var model
+    @Binding var summary: PlaylistSummary?
+
+    func body(content: Content) -> some View {
+        content.confirmationDialog(
+            summary.map { "Publish “\($0.playlist.title)” to YouTube?" } ?? "",
+            isPresented: Binding(get: { summary != nil }, set: { if !$0 { summary = nil } }),
+            titleVisibility: .visible,
+            presenting: summary
+        ) { s in
+            Button("Publish") { model.publishPlaylist(s.playlist) }
+            Button("Cancel", role: .cancel) {}
+        } message: { s in
+            let units = 50 * (1 + s.count)
+            Text("Creates a private playlist on your channel and adds \(s.count) video\(s.count == 1 ? "" : "s"). Uses about \(units.formatted()) of your 10,000 daily quota units\(units > 10_000 - model.quotaToday ? "; the rest continues tomorrow" : "").")
+        }
+    }
+}
+
+/// "Publish to YouTube" for a playlist that's only in Boxtube (its header), with what it costs.
 struct PublishPlaylistButton: View {
     @Environment(AppModel.self) private var model
     var playlist: Playlist
     var videoCount: Int
     var compact = false
     @State private var publishing: Set<String> = []
-    @State private var confirming = false
+    @State private var confirming: PlaylistSummary?
 
     var body: some View {
         Group {
             if model.syncEnabled, Store.isLocalPlaylist(playlist.id), !publishing.contains(playlist.id) {
-                Button { confirming = true } label: {
+                Button { confirming = PlaylistSummary(playlist: playlist, count: videoCount, cover: nil) } label: {
                     Label("Publish to YouTube", systemImage: "arrow.up.circle")
                         .font(.system(size: compact ? 13 : 14.5, weight: .semibold))
                         .padding(.horizontal, 14).frame(height: compact ? 32 : 44)
@@ -251,15 +324,9 @@ struct PublishPlaylistButton: View {
                         .background(BX.surface3, in: Capsule())
                 }
                 .buttonStyle(.plain)
-                .confirmationDialog("Publish “\(playlist.title)” to YouTube?", isPresented: $confirming, titleVisibility: .visible) {
-                    Button("Publish") { model.publishPlaylist(playlist) }
-                    Button("Cancel", role: .cancel) {}
-                } message: {
-                    let units = 50 * (1 + videoCount)
-                    Text("Creates a private playlist on your channel and adds \(videoCount) video\(videoCount == 1 ? "" : "s"). Uses about \(units.formatted()) of your 10,000 daily quota units\(units > 10_000 - model.quotaToday ? "; the rest continues tomorrow" : "").")
-                }
             }
         }
+        .playlistPublishDialog($confirming)
         .observing(model.store, { db in try Q.publishingPlaylists(db) }) { publishing = $0 }
     }
 }

@@ -113,4 +113,41 @@ struct StoreTests {
         #expect(videos == ["talk1"])
         #expect(music == ["song1"])
     }
+
+    @Test func notInterestedAndDontRecommendHideVideosUntilUndone() async throws {
+        let store = try Store.inMemory()
+        try await store.subscribe(Channel(id: "a", title: "a"))
+        try await store.upsert(videos: [video("a1", channel: "a"), video("a2", channel: "a"), video("b1", channel: "b"), video("c1", channel: "c")])
+        try await store.cache(list: "topic:all", videoIds: ["a1", "b1", "c1"])
+
+        try await store.hideVideo("a1")
+        try await store.hideChannel("b")
+
+        let feed = try await store.read { db in try Q.feed(db).map(\.id) }
+        let topic = try await store.read { db in try Q.cachedList(db, key: "topic:all").map(\.id) }
+        #expect(Set(feed) == ["a2"])
+        #expect(topic == ["c1"])
+        let hidden = try await store.read { db in try Q.hidden(db) }
+        #expect(hidden == Q.HiddenSets(videos: ["a1"], channels: ["b"]))
+
+        try await store.unhideAll()
+        let back = try await store.read { db in try Q.cachedList(db, key: "topic:all").map(\.id) }
+        #expect(back == ["a1", "b1", "c1"])
+        #expect(try await store.read { db in try Q.hidden(db) }.isEmpty)
+    }
+
+    @Test func markAsWatchedFillsProgressAndUnwatchedClearsIt() async throws {
+        let store = try Store.inMemory()
+        let v = video("w1", channel: "a")
+        try await store.upsert(videos: [v])
+
+        try await store.setWatched(v, true)
+        let row = try await store.read { db in try Q.history(db).first }
+        #expect(row?.video.id == "w1")
+        #expect(row?.entry.progress == 1)
+        #expect(try await store.read { db in try Q.history(db, unfinishedOnly: true) }.isEmpty)
+
+        try await store.setWatched(v, false)
+        #expect(try await store.read { db in try Q.history(db) }.isEmpty)
+    }
 }

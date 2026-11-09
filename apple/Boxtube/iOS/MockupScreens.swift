@@ -370,6 +370,8 @@ struct PlaylistsScreen: View {
     @State private var historyCount = 0
     @State private var showNew = false
     @State private var toDelete: Playlist?
+    @State private var toPublish: PlaylistSummary?
+    @State private var publishing: Set<String> = []
     @State private var newTitle = ""
     @State private var sortRecent = true
 
@@ -407,11 +409,10 @@ struct PlaylistsScreen: View {
                     ForEach(sorted) { p in
                         Button { model.push(.playlist(p.playlist.id)) } label: { StackedCover(summary: p) }
                             .buttonStyle(.plain)
-                            .contextMenu {
-                                Button { Task { try? await model.store.setPlaylistMusic(p.playlist.id, !p.playlist.isMusic) } } label: {
-                                    Label(p.playlist.isMusic ? "Remove from Music" : "Show in Music", systemImage: p.playlist.isMusic ? "music.note.slash" : "music.note")
-                                }
-                                Button(role: .destructive) { toDelete = p.playlist } label: { Label("Delete playlist…", systemImage: "trash") }
+                            .contextMenu { PlaylistActions(summary: p, publishing: publishing.contains(p.id), toDelete: $toDelete, toPublish: $toPublish) }
+                            .overlay(alignment: .bottomTrailing) {
+                                PlaylistMoreButton(summary: p, publishing: publishing.contains(p.id), toDelete: $toDelete, toPublish: $toPublish)
+                                    .offset(x: 6, y: 2)
                             }
                     }
                 }
@@ -420,6 +421,8 @@ struct PlaylistsScreen: View {
         }
         .islandClearance()
         .playlistDeleteDialog($toDelete)
+        .playlistPublishDialog($toPublish)
+        .observing(model.store, { db in try Q.publishingPlaylists(db) }) { publishing = $0 }
         .alert("New playlist", isPresented: $showNew) {
             TextField("Name", text: $newTitle)
             Button("Create") { let t = newTitle; newTitle = ""; Task { await model.createPlaylist(title: t.isEmpty ? "New playlist" : t, music: model.mode == .music) } }
@@ -478,8 +481,9 @@ struct StackedCover: View {
                 .background(.black.opacity(0.72), in: .rect(cornerRadius: 6))
                 .padding(7)
             }
-            Text(summary.playlist.title).font(.system(size: 14, weight: .semibold)).padding(.top, 9).lineLimit(1)
-            Text("\(summary.count) videos · \(summary.playlist.isPrivate ? "Private" : "Public")").font(.system(size: 12)).foregroundStyle(BX.muted).padding(.top, 2)
+            // Room on the right for the card's ⋯ button.
+            Text(summary.playlist.title).font(.system(size: 14, weight: .semibold)).padding(.top, 9).lineLimit(1).padding(.trailing, 26)
+            Text("\(summary.count) videos · \(summary.playlist.isPrivate ? "Private" : "Public")").font(.system(size: 12)).foregroundStyle(BX.muted).padding(.top, 2).padding(.trailing, 26)
         }
         .foregroundStyle(BX.text)
     }
