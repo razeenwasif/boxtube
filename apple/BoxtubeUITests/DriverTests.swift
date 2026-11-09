@@ -4,6 +4,7 @@ import XCTest
 /// (set TEST_RUNNER_BOXTUBE_STEPS when calling xcodebuild). Each step is one of:
 ///   {"launch":true} {"activate":true} {"tap":"Accessibility label"} {"tapXY":[x,y]} {"swipe":"up|down|left|right"}
 ///   {"type":"text"} {"wait":seconds} {"shot":"name"} {"dump":true}
+///   {"tapPrefix":"More for","index":0,"x":366}
 ///   {"drag":[x1,y1,x2,y2]} {"press":"label"} {"pressXY":[x,y]} {"home":true} {"lock":true}
 /// Screenshots and hierarchy dumps are saved as test attachments.
 final class DriverTests: XCTestCase {
@@ -15,8 +16,32 @@ final class DriverTests: XCTestCase {
             if step["launch"] != nil { app.launch() }
             if step["activate"] != nil { app.activate() }
             if let label = step["tap"] as? String {
-                let element = app.descendants(matching: .any)[label].firstMatch
-                if element.waitForExistence(timeout: 5) { element.tap() } else { attachText("missing-\(i)", "No element labelled \(label)") }
+                let query = app.descendants(matching: .any).matching(identifier: label)
+                if query.firstMatch.waitForExistence(timeout: 5) {
+                    // Tap the on-screen match by its centre; menus keep hidden copies of their items.
+                    let frames = query.allElementsBoundByIndex.map { $0.frame }.filter { app.frame.contains(CGPoint(x: $0.midX, y: $0.midY)) }
+                    if let f = frames.last {
+                        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: f.midX, dy: f.midY)).tap()
+                    } else { query.firstMatch.tap() }
+                } else { attachText("missing-\(i)", "No element labelled \(label)") }
+            }
+            // The nth on-screen element whose label starts with the text: {"tapPrefix":"More for","index":1}
+            if let prefix = step["tapPrefix"] as? String {
+                let n = step["index"] as? Int ?? 0
+                let all = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", prefix)).allElementsBoundByIndex
+                // On screen by frame, top to bottom (covered screens underneath still count; a negative index counts from the end).
+                // "x" keeps only elements whose left edge is at that x, to skip a covered screen's matches.
+                let x = step["x"] as? Double
+                let visible = all.filter { $0.exists && app.frame.insetBy(dx: 0, dy: 50).contains(CGPoint(x: $0.frame.midX, y: $0.frame.midY)) }
+                    .filter { x == nil || abs($0.frame.minX - x!) < 0.5 }
+                    .filter { $0.frame.minY >= (step["minY"] as? Double ?? 0) }
+                    .sorted { $0.frame.minY < $1.frame.minY }
+                let k = n < 0 ? visible.count + n : n
+                if visible.indices.contains(k) {
+                    let f = visible[k].frame
+                    attachText(String(format: "%02d-tapped", i), "\(visible.map { "\($0.label) \($0.frame)" }.joined(separator: "\n"))\n→ \(k)")
+                    app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: f.midX, dy: f.midY)).tap()
+                } else { attachText("missing-\(i)", "\(visible.count) visible elements start with \(prefix)") }
             }
             if let xy = step["tapXY"] as? [Double], xy.count == 2 {
                 app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: xy[0], dy: xy[1])).tap()

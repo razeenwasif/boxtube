@@ -42,6 +42,9 @@ struct WatchScreen: View {
                     commentsCard(v)
                     if !notes.isEmpty { notesCard }
                     if together.isActive { VoteCard(together: together, candidates: Array(upNext.prefix(2))) }
+                    if !model.userQueue.isEmpty {
+                        QueuePanel(thumbWidth: 104).cardSurface()
+                    }
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Up next").font(.system(size: 17, weight: .bold)).accessibilityAddTraits(.isHeader)
                         ForEach(upNext) { n in upNextCard(n) }

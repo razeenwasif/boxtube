@@ -245,6 +245,7 @@ final class AppModel {
         let start = start ?? preview.handoffTime(for: video.id)
         preview.stop()
         segments = []
+        userQueue.removeAll { $0.id == video.id }
         if let from = playingFrom, from.position(of: video.id) == nil { playingFrom = nil }
         activeSegmentEnd = nil
         Task {

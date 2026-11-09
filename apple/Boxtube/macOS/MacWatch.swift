@@ -313,6 +313,11 @@ struct MacWatchView: View {
         let next = upNext(v)
         return VStack(alignment: .leading, spacing: 14) {
             if let card = playingFromCard(v) { card }
+            if !model.userQueue.isEmpty {
+                QueuePanel(thumbWidth: 112, muted: muted)
+                    .background(panel, in: .rect(cornerRadius: 16))
+                    .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.06)))
+            }
             HStack {
                 Text("Up next").font(.system(size: 16, weight: .bold))
                 Spacer()
