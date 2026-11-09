@@ -369,6 +369,7 @@ struct PlaylistsScreen: View {
     @State private var likedCount = 0
     @State private var historyCount = 0
     @State private var showNew = false
+    @State private var toDelete: Playlist?
     @State private var newTitle = ""
     @State private var sortRecent = true
 
@@ -410,7 +411,7 @@ struct PlaylistsScreen: View {
                                 Button { Task { try? await model.store.setPlaylistMusic(p.playlist.id, !p.playlist.isMusic) } } label: {
                                     Label(p.playlist.isMusic ? "Remove from Music" : "Show in Music", systemImage: p.playlist.isMusic ? "music.note.slash" : "music.note")
                                 }
-                                Button(role: .destructive) { Task { try? await model.store.deletePlaylist(p.playlist.id) } } label: { Label("Delete playlist", systemImage: "trash") }
+                                Button(role: .destructive) { toDelete = p.playlist } label: { Label("Delete playlist…", systemImage: "trash") }
                             }
                     }
                 }
@@ -418,6 +419,7 @@ struct PlaylistsScreen: View {
             }
         }
         .islandClearance()
+        .playlistDeleteDialog($toDelete)
         .alert("New playlist", isPresented: $showNew) {
             TextField("Name", text: $newTitle)
             Button("Create") { let t = newTitle; newTitle = ""; Task { await model.createPlaylist(title: t.isEmpty ? "New playlist" : t, music: model.mode == .music) } }

@@ -29,6 +29,7 @@ actor FakeYouTube: YouTubeWriter {
     }
     func deletePlaylistItem(id: String, token: String) async throws { try record("delete \(id)") }
     func createPlaylist(title: String, token: String) async throws -> String { try record("create \(title)"); return newPlaylistId }
+    func deletePlaylist(id: String, token: String) async throws { try record("delete playlist \(id)") }
 }
 
 @Suite("Two-way sync")
@@ -178,5 +179,69 @@ struct SyncTests {
         try await store.importAccount(subscriptions: [], playlists: [], likedIds: [], starterIds: [])
         let subscribed = try await store.read { db in try Q.subscriptions(db).map(\.channel.id) }
         #expect(subscribed == ["UClocal"])
+    }
+
+    // MARK: Deleting and publishing playlists
+
+    func remotePlaylist(_ store: Store, _ id: String, videos: [String]) async throws {
+        try await store.upsert(videos: videos.map { Video(id: $0, channelId: "c", channelTitle: "C", title: $0, publishedAt: .now) })
+        try await store.importAccount(subscriptions: [], playlists: [(YouTubeClient.AccountPlaylist(id: id, title: "Mix", isPrivate: true), videos)],
+                                      likedIds: [], starterIds: [])
+    }
+
+    @Test func deletingOnYouTubeQueuesOneDeleteAndDropsItsEdits() async throws {
+        let store = try Store.inMemory()
+        try await remotePlaylist(store, "PL1", videos: ["v1"])
+        try await store.enqueue(.playlistAdd, target: "v2", playlistId: "PL1")
+        try await store.deletePlaylist("PL1", onYouTube: true)
+        #expect(try await waiting(store) == ["playlistDelete PL1"])
+        let youtube = FakeYouTube()
+        _ = await SyncService(store: store, youtube: youtube).flush(token: "t")
+        #expect(await youtube.calls == ["delete playlist PL1"])
+        // YouTube still lists it until the delete lands; the import mustn't bring it back meanwhile.
+        try await remotePlaylist(store, "PL1", videos: ["v1"])
+        #expect(try await store.read { db in try Playlist.fetchOne(db, key: "PL1") } == nil)
+    }
+
+    @Test func removingFromBoxtubeOnlyStaysRemovedUntilYouBringItBack() async throws {
+        let store = try Store.inMemory()
+        try await remotePlaylist(store, "PL1", videos: ["v1"])
+        try await store.deletePlaylist("PL1", onYouTube: false)
+        #expect(try await waiting(store).isEmpty, "nothing goes to YouTube")
+        try await remotePlaylist(store, "PL1", videos: ["v1"])
+        #expect(try await store.read { db in try Playlist.fetchOne(db, key: "PL1") } == nil)
+        #expect(try await store.read { db in try Q.hiddenPlaylistCount(db) } == 1)
+
+        try await store.unhidePlaylists()
+        try await remotePlaylist(store, "PL1", videos: ["v1"])
+        #expect(try await store.read { db in try Playlist.fetchOne(db, key: "PL1")?.title } == "Mix")
+    }
+
+    @Test func deletingAPlaylistThatNeverReachedYouTubeLeavesNoTrace() async throws {
+        let store = try Store.inMemory()
+        let local = try await store.createPlaylist(title: "Draft")
+        try await store.enqueue(.playlistCreate, target: local.id)
+        try await store.enqueue(.playlistAdd, target: "v1", playlistId: local.id)
+        try await store.deletePlaylist(local.id, onYouTube: true)
+        #expect(try await waiting(store).isEmpty)
+        #expect(try await store.read { db in try Q.hiddenPlaylistCount(db) } == 0)
+    }
+
+    @Test func publishingSendsThePlaylistThenItsVideosInOrder() async throws {
+        let store = try Store.inMemory()
+        try await store.upsert(videos: ["a", "b"].map { Video(id: $0, channelId: "c", channelTitle: "C", title: $0, publishedAt: .now) })
+        let local = try await store.createPlaylist(title: "Weekend projects")
+        try await store.add(videoId: "a", toPlaylist: local.id)
+        try await store.add(videoId: "b", toPlaylist: local.id)
+
+        #expect(try await store.publishPlaylist(local.id) == 2)
+        #expect(try await store.publishPlaylist(local.id) == 0, "already on its way")
+        #expect(try await store.read { db in try Q.publishingPlaylists(db) } == [local.id])
+
+        let youtube = FakeYouTube()
+        _ = await SyncService(store: store, youtube: youtube).flush(token: "t")
+        #expect(await youtube.calls == ["create Weekend projects", "add a to PLnew", "add b to PLnew"])
+        #expect(try await store.read { db in try Q.playlistVideos(db, id: "PLnew").map(\.id) } == ["a", "b"])
+        #expect(try await store.publishPlaylist("PLnew") == 0, "YouTube playlists can't be published again")
     }
 }

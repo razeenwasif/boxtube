@@ -126,6 +126,7 @@ struct GoogleAccountSection: View {
             }
             .disabled(model.isSigningIn)
             if model.syncEnabled { SyncStatusRows() }
+            RemovedPlaylistsRow()
             Button {
                 Task { await model.importFromYouTube() }
             } label: {
@@ -183,5 +184,20 @@ private struct SyncStatusRows: View {
                 Button("Discard", role: .destructive) { Task { await model.retryFailedSync() } }
             }
         }
+    }
+}
+
+/// Offers to bring back YouTube playlists you removed from Boxtube.
+private struct RemovedPlaylistsRow: View {
+    @Environment(AppModel.self) private var model
+    @State private var hidden = 0
+    var body: some View {
+        Group {
+            if hidden > 0 {
+                Button("Bring back \(hidden) removed playlist\(hidden == 1 ? "" : "s")") { Task { await model.bringBackRemovedPlaylists() } }
+                    .disabled(model.isImporting)
+            }
+        }
+        .observing(model.store, { db in try Q.hiddenPlaylistCount(db) }) { hidden = $0 }
     }
 }

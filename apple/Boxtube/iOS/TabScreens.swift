@@ -108,6 +108,7 @@ struct PlaylistDetailScreen: View {
                     .tint(BX.coral)
                     .padding(.horizontal, 14).frame(height: 48)
                     .background(BX.surface, in: .rect(cornerRadius: 14))
+                    PublishPlaylistButton(playlist: playlist, videoCount: videos.count)
                 }
                 ForEach(videos) { v in
                     VideoRow(video: v)

@@ -47,6 +47,7 @@ struct MacVideoGrid: View {
                     LargeTitle(name ?? title)
                     Spacer()
                     if let playlist {
+                        PublishPlaylistButton(playlist: playlist, videoCount: videos.count, compact: true)
                         Toggle("Show in Music", isOn: Binding(get: { playlist.isMusic }, set: { on in Task { try? await model.store.setPlaylistMusic(playlist.id, on) } }))
                             .toggleStyle(.switch).controlSize(.small).tint(BX.coral)
                             .font(.system(size: 13, weight: .semibold)).foregroundStyle(BX.text2)
@@ -153,6 +154,7 @@ struct MacPlaylists: View {
     @Environment(AppModel.self) private var model
     @State private var playlists: [PlaylistSummary] = []
     @State private var newTitle = ""
+    @State private var toDelete: Playlist?
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
@@ -168,13 +170,14 @@ struct MacPlaylists: View {
                             .buttonStyle(.plain)
                             .contextMenu {
                                 Button(p.playlist.isMusic ? "Remove from Music" : "Show in Music") { Task { try? await model.store.setPlaylistMusic(p.id, !p.playlist.isMusic) } }
-                                Button("Delete", role: .destructive) { Task { try? await model.store.deletePlaylist(p.id) } }
+                                Button("Delete…", role: .destructive) { toDelete = p.playlist }
                             }
                     }
                 }
             }
             .padding(28)
         }
+        .playlistDeleteDialog($toDelete)
         .observing(model.store, { db in try Q.playlists(db) }) { playlists = $0 }
     }
 }

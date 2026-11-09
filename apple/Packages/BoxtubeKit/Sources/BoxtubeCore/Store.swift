@@ -114,6 +114,10 @@ public final class Store: Sendable {
                 t.column("lastError", .text)
             }
         }
+        m.registerMigration("v5-hidden-playlists") { db in
+            // YouTube playlists you removed from Boxtube, so an import doesn't bring them back.
+            try db.create(table: "hiddenPlaylist") { t in t.primaryKey("id", .text) }
+        }
         return m
     }
 
@@ -342,8 +346,45 @@ public final class Store: Sendable {
         }
     }
 
-    public func deletePlaylist(_ id: String) async throws {
-        try await writer.write { db in _ = try Playlist.deleteOne(db, key: id) }
+    /// Removes a playlist from Boxtube. A YouTube playlist is remembered as removed, so imports leave it out;
+    /// with `onYouTube` it's also queued for deletion there. Queued edits to it are dropped either way.
+    public func deletePlaylist(_ id: String, onYouTube: Bool = false) async throws {
+        try await writer.write { db in
+            let createdHere = try OutboxOp.filter(Column("kind") == OutboxOp.Kind.playlistCreate.rawValue && Column("target") == id).fetchCount(db) > 0
+            try db.execute(sql: "DELETE FROM outbox WHERE playlistId = ? OR target = ?", arguments: [id, id])
+            _ = try Playlist.deleteOne(db, key: id)
+            // A playlist that never reached YouTube (made here, not yet sent) has nothing to hide or delete there.
+            guard !Store.isLocalPlaylist(id), !createdHere else { return }
+            try db.execute(sql: "INSERT OR IGNORE INTO hiddenPlaylist (id) VALUES (?)", arguments: [id])
+            if onYouTube {
+                var op = OutboxOp(kind: .playlistDelete, target: id)
+                try op.insert(db)
+            }
+        }
+    }
+
+    /// Lets imports bring back YouTube playlists you removed from Boxtube.
+    public func unhidePlaylists() async throws {
+        try await writer.write { db in try db.execute(sql: "DELETE FROM hiddenPlaylist") }
+    }
+
+    /// Queues a Boxtube-only playlist for YouTube: made there (private), then its videos added in order.
+    /// Returns how many videos will be added.
+    @discardableResult
+    public func publishPlaylist(_ id: String) async throws -> Int {
+        try await writer.write { db in
+            guard Store.isLocalPlaylist(id), try Playlist.exists(db, key: id) else { return 0 }
+            let already = try OutboxOp.filter(Column("kind") == OutboxOp.Kind.playlistCreate.rawValue && Column("target") == id).fetchCount(db)
+            guard already == 0 else { return 0 }
+            var create = OutboxOp(kind: .playlistCreate, target: id)
+            try create.insert(db)
+            let videos = try String.fetchAll(db, sql: "SELECT videoId FROM playlistItem WHERE playlistId = ? ORDER BY position", arguments: [id])
+            for v in videos {
+                var add = OutboxOp(kind: .playlistAdd, target: v, playlistId: id)
+                try add.insert(db)
+            }
+            return videos.count
+        }
     }
 
     public func add(videoId: String, toPlaylist playlistId: String) async throws {
@@ -387,7 +428,8 @@ public final class Store: Sendable {
             for id in toDrop {
                 try db.execute(sql: "UPDATE channel SET isSubscribed = 0 WHERE id = ?", arguments: [id])
             }
-            for (remote, videoIds) in playlists {
+            let hidden = Set(try String.fetchAll(db, sql: "SELECT id FROM hiddenPlaylist"))
+            for (remote, videoIds) in playlists where !hidden.contains(remote.id) {
                 let existing = try Playlist.fetchOne(db, key: remote.id)
                 var playlist = Playlist(id: remote.id, title: remote.title, isMusic: existing?.isMusic ?? false, isPrivate: remote.isPrivate,
                                         createdAt: existing?.createdAt ?? .now, updatedAt: .now, musicChosen: existing?.musicChosen ?? false)
@@ -576,6 +618,15 @@ public enum Q {
         let all = try OutboxOp.fetchAll(db)
         let failed = all.filter { $0.attempts >= SyncService.maxAttempts }
         return OutboxSummary(waiting: all.count - failed.count, failed: failed.count, lastError: failed.last?.lastError)
+    }
+
+    public static func hiddenPlaylistCount(_ db: Database) throws -> Int {
+        try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM hiddenPlaylist") ?? 0
+    }
+
+    /// Boxtube-only playlists already queued to be made on YouTube.
+    public static func publishingPlaylists(_ db: Database) throws -> Set<String> {
+        Set(try String.fetchAll(db, sql: "SELECT target FROM outbox WHERE kind = ?", arguments: [OutboxOp.Kind.playlistCreate.rawValue]))
     }
 
     public static func playlistVideos(_ db: Database, id: String) throws -> [Video] {

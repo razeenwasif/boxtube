@@ -150,7 +150,7 @@ public struct OutboxOp: Codable, Hashable, Identifiable, Sendable, FetchableReco
     public static let databaseTableName = "outbox"
 
     public enum Kind: String, Codable, Sendable, CaseIterable {
-        case like, dislike, unrate, subscribe, unsubscribe, playlistAdd, playlistRemove, playlistCreate
+        case like, dislike, unrate, subscribe, unsubscribe, playlistAdd, playlistRemove, playlistCreate, playlistDelete
 
         /// Kinds that replace one another for the same target: the latest one wins.
         var family: String {
@@ -159,6 +159,7 @@ public struct OutboxOp: Codable, Hashable, Identifiable, Sendable, FetchableReco
             case .subscribe, .unsubscribe: "subscription"
             case .playlistAdd, .playlistRemove: "playlistItem"
             case .playlistCreate: "playlistCreate"
+            case .playlistDelete: "playlistDelete"
             }
         }
     }

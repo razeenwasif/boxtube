@@ -205,6 +205,11 @@ public actor YouTubeClient {
         return made.id
     }
 
+    /// Deletes one of your playlists on YouTube.
+    public func deletePlaylist(id: String, token: String) async throws {
+        _ = try await send("DELETE", "playlists", ["id": id], token: token)
+    }
+
     private func send(_ method: String, _ path: String, _ query: [String: String], body: [String: Any]? = nil, token: String) async throws -> Data {
         var components = URLComponents(url: base.appending(path: path), resolvingAgainstBaseURL: false)!
         components.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }

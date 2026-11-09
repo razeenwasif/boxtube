@@ -10,6 +10,7 @@ public protocol YouTubeWriter: Sendable {
     func playlistItemIds(playlistId: String, videoId: String, token: String) async throws -> [String]
     func deletePlaylistItem(id: String, token: String) async throws
     func createPlaylist(title: String, token: String) async throws -> String
+    func deletePlaylist(id: String, token: String) async throws
 }
 
 extension YouTubeClient: YouTubeWriter {}
@@ -91,6 +92,8 @@ public actor SyncService {
             for id in try await youtube.playlistItemIds(playlistId: playlistId, videoId: op.target, token: token) {
                 try await youtube.deletePlaylistItem(id: id, token: token)
             }
+        case .playlistDelete:
+            try await youtube.deletePlaylist(id: op.target, token: token)
         case .playlistCreate:
             guard let title = try await store.read({ db in try Playlist.fetchOne(db, key: op.target)?.title }) else { return }
             let remoteId = try await youtube.createPlaylist(title: title, token: token)

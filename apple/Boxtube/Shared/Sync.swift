@@ -1,5 +1,6 @@
 import SwiftUI
 import BoxtubeCore
+import BoxtubeUI
 
 /// What two-way sync is doing, for Settings and the You tab.
 struct SyncState: Equatable {
@@ -145,6 +146,31 @@ extension AppModel {
         return playlist
     }
 
+    /// Removes a playlist from Boxtube; with `onYouTube` (sync on) it's deleted from your YouTube account too.
+    func deletePlaylist(_ playlist: Playlist, onYouTube: Bool) {
+        let both = onYouTube && syncEnabled
+        Task {
+            try? await store.deletePlaylist(playlist.id, onYouTube: both)
+            if both { scheduleSync() }
+        }
+        flash(both ? "Deleting “\(playlist.title)” on YouTube" : "Removed “\(playlist.title)” from Boxtube")
+    }
+
+    /// Makes a Boxtube-only playlist on YouTube (private) and adds its videos, in order.
+    func publishPlaylist(_ playlist: Playlist) {
+        guard syncEnabled else { return }
+        Task {
+            let count = (try? await store.publishPlaylist(playlist.id)) ?? 0
+            flash("Publishing “\(playlist.title)” with \(count) video\(count == 1 ? "" : "s") to YouTube", seconds: 3)
+            scheduleSync()
+        }
+    }
+
+    func bringBackRemovedPlaylists() async {
+        try? await store.unhidePlaylists()
+        await importFromYouTube()
+    }
+
     private func queue(_ kind: OutboxOp.Kind, _ target: String, playlist: String? = nil) async {
         guard syncEnabled else { return }
         try? await store.enqueue(kind, target: target, playlistId: playlist)
@@ -163,5 +189,77 @@ extension AppModel {
     func retryFailedSync() async {
         try? await store.clearFailedOutbox()
         sync.problem = nil
+    }
+}
+
+// MARK: - Playlist deletion and publishing UI
+
+extension View {
+    /// Asks how to delete a playlist: on YouTube too (sync on), from Boxtube only, or plainly for Boxtube-only ones.
+    func playlistDeleteDialog(_ playlist: Binding<Playlist?>) -> some View { modifier(PlaylistDeleteDialog(playlist: playlist)) }
+}
+
+private struct PlaylistDeleteDialog: ViewModifier {
+    @Environment(AppModel.self) private var model
+    @Binding var playlist: Playlist?
+
+    func body(content: Content) -> some View {
+        content.confirmationDialog(
+            playlist.map { "Delete “\($0.title)”?" } ?? "",
+            isPresented: Binding(get: { playlist != nil }, set: { if !$0 { playlist = nil } }),
+            titleVisibility: .visible,
+            presenting: playlist
+        ) { p in
+            if Store.isLocalPlaylist(p.id) {
+                Button("Delete", role: .destructive) { model.deletePlaylist(p, onYouTube: false) }
+            } else if model.syncEnabled {
+                Button("Delete on YouTube too", role: .destructive) { model.deletePlaylist(p, onYouTube: true) }
+                Button("Remove from Boxtube only") { model.deletePlaylist(p, onYouTube: false) }
+            } else {
+                Button("Remove from Boxtube", role: .destructive) { model.deletePlaylist(p, onYouTube: false) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { p in
+            if Store.isLocalPlaylist(p.id) {
+                Text("This playlist is only in Boxtube.")
+            } else if model.syncEnabled {
+                Text("Deleting on YouTube can't be undone. Removing it from Boxtube only leaves it on YouTube; Settings can bring it back.")
+            } else {
+                Text("It stays on YouTube. Settings can bring it back.")
+            }
+        }
+    }
+}
+
+/// "Publish to YouTube" for a playlist that's only in Boxtube, with what it costs.
+struct PublishPlaylistButton: View {
+    @Environment(AppModel.self) private var model
+    var playlist: Playlist
+    var videoCount: Int
+    var compact = false
+    @State private var publishing: Set<String> = []
+    @State private var confirming = false
+
+    var body: some View {
+        Group {
+            if model.syncEnabled, Store.isLocalPlaylist(playlist.id), !publishing.contains(playlist.id) {
+                Button { confirming = true } label: {
+                    Label("Publish to YouTube", systemImage: "arrow.up.circle")
+                        .font(.system(size: compact ? 13 : 14.5, weight: .semibold))
+                        .padding(.horizontal, 14).frame(height: compact ? 32 : 44)
+                        .frame(maxWidth: compact ? nil : .infinity)
+                        .background(BX.surface3, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .confirmationDialog("Publish “\(playlist.title)” to YouTube?", isPresented: $confirming, titleVisibility: .visible) {
+                    Button("Publish") { model.publishPlaylist(playlist) }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    let units = 50 * (1 + videoCount)
+                    Text("Creates a private playlist on your channel and adds \(videoCount) video\(videoCount == 1 ? "" : "s"). Uses about \(units.formatted()) of your 10,000 daily quota units\(units > 10_000 - model.quotaToday ? "; the rest continues tomorrow" : "").")
+                }
+            }
+        }
+        .observing(model.store, { db in try Q.publishingPlaylists(db) }) { publishing = $0 }
     }
 }
