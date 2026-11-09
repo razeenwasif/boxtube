@@ -39,8 +39,12 @@ public final class PlayerEngine: NSObject {
     public func release(_ id: UUID) { hostStack.removeAll { $0 == id } }
     private var lastProgressReport = Date.distantPast
     private let messageProxy = MessageProxy()
+    /// Scripts sent before the player page has loaded wait here, so an early load isn't lost.
+    private var pageLoaded = false
+    private var queued: [String] = []
 
-    public override init() {
+    /// `muted` makes a silent player for previews: it starts muted and stays muted.
+    public init(muted: Bool = false) {
         let config = WKWebViewConfiguration()
         config.mediaTypesRequiringUserActionForPlayback = []
         #if os(iOS)
@@ -48,7 +52,7 @@ public final class PlayerEngine: NSObject {
         config.allowsPictureInPictureMediaPlayback = true
         #endif
         config.userContentController.add(messageProxy, name: "bt")
-        webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 16, height: 9), configuration: config)
+        webView = PlayerWebView(frame: CGRect(x: 0, y: 0, width: 16, height: 9), configuration: config)
         #if os(iOS)
         webView.isOpaque = false
         webView.backgroundColor = .black
@@ -62,8 +66,11 @@ public final class PlayerEngine: NSObject {
         #endif
         webView.isInspectable = true
         super.init()
+        self.muted = muted
         messageProxy.owner = self
-        if let url = Bundle.module.url(forResource: "player", withExtension: "html"), let html = try? String(contentsOf: url, encoding: .utf8) {
+        webView.navigationDelegate = messageProxy
+        if let url = Bundle.module.url(forResource: "player", withExtension: "html"), var html = try? String(contentsOf: url, encoding: .utf8) {
+            if muted { html = html.replacingOccurrences(of: "var startMuted = false;", with: "var startMuted = true;") }
             // A real https origin makes YouTube accept the embed (it checks the referrer).
             webView.loadHTMLString(html, baseURL: URL(string: "https://boxtube.app"))
         }
@@ -94,6 +101,8 @@ public final class PlayerEngine: NSObject {
 
     public private(set) var muted = false
     public func setMuted(_ on: Bool) { muted = on; js(on ? "cmd('mute')" : "cmd('unmute')") }
+    /// For previews: whether videos loaded from now on start silent, applied to the current one too.
+    public func setStartMuted(_ on: Bool) { muted = on; js("startMuted = \(on); cmd('\(on ? "mute" : "unmute")')") }
 
     public private(set) var captionsOn = false
     public func setCaptions(_ on: Bool) { captionsOn = on; js("cmd('cc', \(on))") }
@@ -112,7 +121,15 @@ public final class PlayerEngine: NSObject {
     }
 
     private func js(_ script: String) {
+        guard pageLoaded else { queued.append(script); return }
         webView.evaluateJavaScript(script, completionHandler: nil)
+    }
+
+    fileprivate func pageDidLoad() {
+        pageLoaded = true
+        let scripts = queued
+        queued = []
+        scripts.forEach { webView.evaluateJavaScript($0, completionHandler: nil) }
     }
 
     // MARK: Messages from the page
@@ -158,12 +175,25 @@ public final class PlayerEngine: NSObject {
     }
 }
 
-/// WKScriptMessageHandler retains its handler; this proxy breaks the cycle.
-private final class MessageProxy: NSObject, WKScriptMessageHandler {
+/// The player's web view. On Mac it can refuse the mouse, so clicks and hovering reach Boxtube's own controls
+/// (previews, the corner player) instead of YouTube's page.
+public final class PlayerWebView: WKWebView {
+    #if os(macOS)
+    var passesThrough = false
+    public override func hitTest(_ point: NSPoint) -> NSView? { passesThrough ? nil : super.hitTest(point) }
+    public override func acceptsFirstMouse(for event: NSEvent?) -> Bool { passesThrough ? false : super.acceptsFirstMouse(for: event) }
+    #endif
+}
+
+/// WKScriptMessageHandler retains its handler; this proxy breaks the cycle. It also hears when the page has loaded.
+private final class MessageProxy: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
     weak var owner: PlayerEngine?
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let body = message.body as? [String: Any] else { return }
         MainActor.assumeIsolated { owner?.receive(body) }
+    }
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        MainActor.assumeIsolated { owner?.pageDidLoad() }
     }
 }
 
@@ -172,10 +202,12 @@ private final class MessageProxy: NSObject, WKScriptMessageHandler {
 /// Shows the shared web view. Whichever surface appeared last owns it.
 public struct PlayerSurface: View {
     let engine: PlayerEngine
+    var interactive: Bool
     @State private var id = UUID()
-    public init(engine: PlayerEngine) { self.engine = engine }
+    /// `interactive: false` lets clicks and hovering pass through to what's underneath (Mac previews).
+    public init(engine: PlayerEngine, interactive: Bool = true) { self.engine = engine; self.interactive = interactive }
     public var body: some View {
-        Host(engine: engine, isOwner: engine.owner == id)
+        Host(engine: engine, isOwner: engine.owner == id, interactive: interactive)
             .background(Color.black)
             .onAppear { engine.claim(id) }
             .onDisappear { engine.release(id) }
@@ -187,6 +219,7 @@ public struct PlayerSurface: View {
 private struct Host: UIViewRepresentable {
     let engine: PlayerEngine
     var isOwner: Bool
+    var interactive: Bool
     func makeUIView(context: Context) -> UIView {
         let container = UIView()
         container.backgroundColor = .black
@@ -215,8 +248,17 @@ private struct Host: UIViewRepresentable {
 private struct Host: NSViewRepresentable {
     let engine: PlayerEngine
     var isOwner: Bool
+    var interactive: Bool
+
+    /// Hands the mouse to whatever is behind it when the surface isn't interactive.
+    final class Container: NSView {
+        var interactive = true
+        override func hitTest(_ point: NSPoint) -> NSView? { interactive ? super.hitTest(point) : nil }
+    }
+
     func makeNSView(context: Context) -> NSView {
-        let container = NSView()
+        let container = Container()
+        container.interactive = interactive
         container.wantsLayer = true
         container.layer?.backgroundColor = NSColor.black.cgColor
         container.layer?.masksToBounds = true
@@ -224,10 +266,13 @@ private struct Host: NSViewRepresentable {
         return container
     }
     func updateNSView(_ view: NSView, context: Context) {
+        (view as? Container)?.interactive = interactive
         if isOwner, engine.webView.superview !== view { attach(to: view) }
+        if isOwner { (engine.webView as? PlayerWebView)?.passesThrough = !interactive }
     }
     private func attach(to container: NSView) {
         let web = engine.webView
+        (web as? PlayerWebView)?.passesThrough = !interactive
         web.removeFromSuperview()
         web.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(web)

@@ -141,6 +141,9 @@ struct MacSettings: View {
             TextField("Your name", text: $model.displayName)
             Toggle("Calm mode", isOn: $model.calmMode)
             Toggle("Tint the window from the video", isOn: $model.tintFromVideo)
+            Picker("Preview videos on hover", selection: $model.previewMode) {
+                ForEach(PreviewMode.allCases) { Text($0.title).tag($0) }
+            }
             Picker("Watch later clears after", selection: $model.clearAfterWeeks) {
                 ForEach([1, 2, 4, 8], id: \.self) { Text("\($0) week\($0 == 1 ? "" : "s")").tag($0) }
             }

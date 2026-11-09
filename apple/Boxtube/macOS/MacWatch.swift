@@ -22,6 +22,7 @@ struct MacWatchView: View {
     @State private var expanded = false
     @State private var showSkim = false
     @State private var disliked: Set<String> = []
+    @State private var scrolledY: CGFloat = 0
     @FocusState private var focused: Bool
 
     private var tinted: Bool { model.tintFromVideo && model.palette != .standard }
@@ -59,24 +60,30 @@ struct MacWatchView: View {
     // MARK: Layouts
 
     private func watchLayout(_ v: Video) -> some View {
-        HStack(alignment: .top, spacing: 24) {
-            ScrollView {
+        // One page that scrolls as a whole and starts right at the rail, so the video's glow
+        // can spread and fade out instead of being cut at a column edge.
+        ScrollView {
+            HStack(alignment: .top, spacing: 24) {
                 VStack(alignment: .leading, spacing: 16) {
                     player(v, notesMode: false)
                     Text(v.title).font(BX.display(24, .bold)).kerning(-0.48).lineSpacing(2).textSelection(.enabled)
                     channelRow(v)
                     descriptionCard(v)
                 }
-                .padding(.bottom, 24)
+                rightColumn(v).frame(width: 372)
             }
-            .scrollIndicators(.hidden)
-            ScrollView {
-                rightColumn(v).padding(.bottom, 24)
-            }
-            .scrollIndicators(.hidden)
-            .frame(width: 372)
+            .padding(.leading, 20).padding(.trailing, 24).padding(.top, 4).padding(.bottom, 24)
         }
-        .padding(.leading, 20).padding(.trailing, 24).padding(.top, 4)
+        .scrollIndicators(.hidden)
+        .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, y in scrolledY = y }
+        // Once scrolled, the page fades out under the top bar instead of stopping at a hard line.
+        .mask {
+            VStack(spacing: 0) {
+                LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
+                    .frame(height: max(0.5, min(scrolledY, 36)))
+                Color.black
+            }
+        }
     }
 
     private func notesLayout(_ v: Video) -> some View {
@@ -113,7 +120,20 @@ struct MacWatchView: View {
                     .padding(14)
             }
             .clipShape(.rect(cornerRadius: 18, style: .continuous))
-            .shadow(color: tinted ? p.accent.opacity(0.35) : .clear, radius: 45, y: 30)
+            .background { if tinted { ambientGlow } }
+    }
+
+    /// Light from the video spilling onto the page: wide, soft, and cast downward, so it fades out
+    /// before any edge (it starts below the player's top, so nothing is cut under the top bar).
+    private var ambientGlow: some View {
+        RoundedRectangle(cornerRadius: 60, style: .continuous)
+            .fill(p.accent)
+            .padding(.top, 170)
+            .padding(.horizontal, -24)
+            .blur(radius: 60)
+            .opacity(0.45)
+            .offset(y: 50)
+            .allowsHitTesting(false)
     }
 
     private func addToPlaylist(_ v: Video) -> some View {

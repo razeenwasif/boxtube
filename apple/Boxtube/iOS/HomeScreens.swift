@@ -77,6 +77,8 @@ struct HomeScreen: View {
                 }
             }
         }
+        .onScrollPhaseChange { _, phase in model.preview.scrollPhase(isScrolling: phase != .idle) }
+        .onDisappear { model.preview.stop() }
         .islandClearance()
         .refreshable { await model.refresh(force: true) }
         .observing(model.store, { db in try Q.feed(db) }) { feed = $0 }
@@ -138,6 +140,7 @@ struct HomeCard: View {
         VStack(alignment: .leading, spacing: 0) {
             Button { model.open(video) } label: {
                 VideoThumbnail(video, radius: 22, progress: progress, inset: 10)
+                    .videoPreview(video, cornerRadius: 22)
                     .overlay(alignment: .topLeading) {
                         if let label {
                             Text(label)

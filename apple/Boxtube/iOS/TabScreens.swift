@@ -334,6 +334,9 @@ struct SettingsSheet: View {
                         ForEach([1, 2, 4, 8], id: \.self) { Text("\($0) week\($0 == 1 ? "" : "s")").tag($0) }
                     }
                     Toggle("Tint from the video", isOn: $model.tintFromVideo)
+                    Picker("Preview videos", selection: $model.previewMode) {
+                        ForEach(PreviewMode.allCases) { Text($0.title).tag($0) }
+                    }
                 }
                 Section {
                     GoogleAccountSection()

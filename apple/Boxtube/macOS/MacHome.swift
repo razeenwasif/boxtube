@@ -135,7 +135,9 @@ private struct HeroCard: View {
         ZStack(alignment: .bottomLeading) {
             Button { model.open(video) } label: {
                 ZStack {
-                    Color.clear.overlay { HeroImage(video: video) }.clipped()
+                    Color.clear.overlay { HeroImage(video: video) }
+                        .overlay { PreviewLayer(video: video, showBadge: false) }
+                        .clipped()
                     LinearGradient(stops: [
                         .init(color: Color(hex: 0x080A10, opacity: 0.92), location: 0),
                         .init(color: Color(hex: 0x080A10, opacity: 0.55), location: 0.4),
@@ -147,6 +149,7 @@ private struct HeroCard: View {
                 .contentShape(.rect(cornerRadius: 20))
             }
             .buttonStyle(.plain)
+            .previewTrigger(video)
             .accessibilityLabel("\(history == nil ? "Play" : "Resume") \(video.title)")
 
             HStack(alignment: .bottom, spacing: 24) {
@@ -268,6 +271,7 @@ struct MacVideoCard: View {
         Button { model.open(video) } label: {
             VStack(alignment: .leading, spacing: 12) {
                 VideoThumbnail(video, radius: 14, progress: progress)
+                    .videoPreview(video, cornerRadius: 14)
                 HStack(alignment: .top, spacing: 10) {
                     ChannelAvatar(title: video.channelTitle, url: channel?.avatarURL, size: 32)
                     VStack(alignment: .leading, spacing: 3) {

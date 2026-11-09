@@ -36,6 +36,7 @@ struct VideoCard: View {
             VStack(alignment: .leading, spacing: 12) {
                 VideoThumbnail(video, radius: 20, progress: progress)
                     .saturation(muted ? 0.45 : 1)
+                    .macPreview(video, cornerRadius: 20, enabled: !muted)
                 HStack(alignment: .top, spacing: 12) {
                     if !muted { ChannelAvatar(title: video.channelTitle, size: 36) }
                     VStack(alignment: .leading, spacing: 3) {

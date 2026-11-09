@@ -12,6 +12,7 @@ html,body{margin:0;padding:0;background:#000;width:100%;height:100%;overflow:hid
 <div id="player"></div>
 <script>
 var player = null, ready = false, pending = null;
+var startMuted = false; // previews: always silent
 function post(m) { try { window.webkit.messageHandlers.bt.postMessage(m); } catch (e) {} }
 function onYouTubeIframeAPIReady() {
   player = new YT.Player('player', {
@@ -20,6 +21,7 @@ function onYouTubeIframeAPIReady() {
     events: {
       onReady: function () {
         ready = true; post({ type: 'ready' });
+        if (startMuted) player.mute();
         if (pending) { load(pending.id, pending.start, pending.autoplay); pending = null; }
       },
       onStateChange: function (e) { post({ type: 'state', state: e.data, duration: player.getDuration() || 0 }); },
@@ -35,6 +37,7 @@ function onYouTubeIframeAPIReady() {
 }
 function load(id, start, autoplay) {
   if (!ready) { pending = { id: id, start: start, autoplay: autoplay }; return; }
+  if (startMuted) player.mute();
   if (autoplay) { player.loadVideoById({ videoId: id, startSeconds: start }); }
   else { player.cueVideoById({ videoId: id, startSeconds: start }); }
 }

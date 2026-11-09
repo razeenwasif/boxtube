@@ -10,6 +10,7 @@ enum MacSection: Hashable {
 
 struct MacRoot: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.scenePhase) private var scenePhase
     @State private var section: MacSection? = .home
     @State private var subs: [Q.SubscriptionRow] = []
     @State private var laterCount = 0
@@ -62,6 +63,13 @@ struct MacRoot: View {
         .overlay {
             if showPalette { MacCommandPalette(isPresented: $showPalette, section: $section) }
         }
+        .overlay {
+            // Leaving a playing video keeps it on screen, snapped to a corner.
+            if model.watching == nil, model.player.video != nil, section != .music, !showPalette {
+                MacMiniPlayer()
+            }
+        }
+        .animation(.snappy(duration: 0.3), value: model.watching == nil && model.player.video != nil)
         .overlay(alignment: .bottom) {
             if showShortcuts { ShortcutHUD().padding(.bottom, 24).transition(.move(edge: .bottom).combined(with: .opacity)) }
         }
@@ -71,6 +79,7 @@ struct MacRoot: View {
         .sheet(isPresented: $model.showTimeBox) { TimeBoxView().frame(width: 460, height: 760) }
         .onChange(of: model.player.state.time) { _, _ in model.tick(model.player.state) }
         .onChange(of: model.player.state.isPlaying) { _, _ in model.tick(model.player.state) }
+        .onChange(of: scenePhase) { _, phase in if phase != .active { model.preview.stop() } }
         .onChange(of: section) { _, s in
             model.watching = nil
             model.paths[.home] = []

@@ -5,6 +5,7 @@ import BoxtubePlayer
 
 struct PhoneRoot: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.scenePhase) private var scenePhase
     @State private var visited: Set<Tab> = [.home]
     @State private var live = LiveActivityController()
 
@@ -48,6 +49,7 @@ struct PhoneRoot: View {
         }
         .onChange(of: model.player.state.time) { _, _ in model.tick(model.player.state) }
         .onChange(of: model.player.state.isPlaying) { _, _ in model.tick(model.player.state) }
+        .onChange(of: scenePhase) { _, phase in if phase != .active { model.preview.stop() } }
         .onAppear { live.attach(to: model) }
     }
 

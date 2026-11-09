@@ -61,18 +61,22 @@ final class AppModel {
     let hasAPIKey: Bool
     let google: GoogleAuth
     let googleConfigured: Bool
+    let preview = PreviewController()
     var account: GoogleAccount?
     var isSigningIn = false
     var isImporting = false
     var lastImport: Date?
 
     // Settings
-    var calmMode: Bool { didSet { defaults.set(calmMode, forKey: "calmMode") } }
+    var calmMode: Bool { didSet { defaults.set(calmMode, forKey: "calmMode"); if calmMode { preview.stop() } } }
     var mode: AppMode { didSet { defaults.set(mode.rawValue, forKey: "mode") } }
     var clearAfterWeeks: Int { didSet { defaults.set(clearAfterWeeks, forKey: "clearAfterWeeks") } }
     var tintFromVideo: Bool { didSet { defaults.set(tintFromVideo, forKey: "tintFromVideo") } }
     var displayName: String { didSet { defaults.set(displayName, forKey: "displayName") } }
     var autoplay: Bool { didSet { defaults.set(autoplay, forKey: "autoplay") } }
+    var previewMode: PreviewMode {
+        didSet { defaults.set(previewMode.rawValue, forKey: "previewMode"); if previewMode == .off { preview.stop() } }
+    }
 
     // Navigation
     var tab: Tab = .home
@@ -133,6 +137,11 @@ final class AppModel {
         tintFromVideo = defaults.object(forKey: "tintFromVideo") as? Bool ?? true
         displayName = defaults.string(forKey: "displayName") ?? "Jordan Diaz"
         autoplay = defaults.object(forKey: "autoplay") as? Bool ?? true
+        #if os(iOS)
+        previewMode = PreviewMode(rawValue: defaults.string(forKey: "previewMode") ?? "") ?? .wifiOnly
+        #else
+        previewMode = PreviewMode(rawValue: defaults.string(forKey: "previewMode") ?? "") ?? .on
+        #endif
         recentSearches = defaults.stringArray(forKey: "recentSearches") ?? []
 
         player.onProgress = { [weak self] video, state in
@@ -144,6 +153,7 @@ final class AppModel {
             guard let self else { return }
             if self.autoplay || !self.segments.isEmpty { self.advanceQueue() }
         }
+        preview.attach(self)
     }
 
     // MARK: Lifecycle
@@ -183,6 +193,9 @@ final class AppModel {
     // MARK: Playback
 
     func open(_ video: Video, at start: Double? = nil, present: Bool = true) {
+        // Opening a card that's previewing carries on from the preview's moment.
+        let start = start ?? preview.handoffTime(for: video.id)
+        preview.stop()
         segments = []
         if let from = playingFrom, from.position(of: video.id) == nil { playingFrom = nil }
         activeSegmentEnd = nil
