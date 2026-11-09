@@ -45,7 +45,7 @@ struct MusicHomeScreen: View {
                                 Text(q.title).font(.system(size: 13, weight: .semibold)).lineLimit(2).multilineTextAlignment(.leading)
                                     .foregroundStyle(q.isPlaying ? BX.coralText : BX.text)
                                 Spacer(minLength: 0)
-                                if q.isPlaying { EqualizerBars(animating: model.player.state.isPlaying).padding(.trailing, 10) }
+                                if q.isPlaying { EqualizerBars(animating: model.player.isPlaying).padding(.trailing, 10) }
                             }
                             .frame(height: 56)
                             .background(BX.surface2)

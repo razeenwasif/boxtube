@@ -19,6 +19,34 @@ extension View {
     func observing<T: Sendable>(_ store: Store, _ fetch: @escaping @Sendable (Database) throws -> T, into: @escaping @MainActor (T) -> Void) -> some View {
         observing(store, id: 0, fetch, into: into)
     }
+
+    /// Comparable results skip unchanged updates (see `Store.values`).
+    func observing<T: Sendable & Equatable, ID: Equatable>(
+        _ store: Store, id: ID, _ fetch: @escaping @Sendable (Database) throws -> T, into: @escaping @MainActor (T) -> Void
+    ) -> some View {
+        task(id: id) {
+            do {
+                for try await value in store.values(fetch) { into(value) }
+            } catch {}
+        }
+    }
+
+    func observing<T: Sendable & Equatable>(_ store: Store, _ fetch: @escaping @Sendable (Database) throws -> T, into: @escaping @MainActor (T) -> Void) -> some View {
+        observing(store, id: 0, fetch, into: into)
+    }
+}
+
+/// Feeds the player's time to the model. It lives in its own tiny view so the root view doesn't
+/// depend on the playback time and re-run several times a second while a video plays.
+struct PlaybackTicker: View {
+    @Environment(AppModel.self) private var model
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
+            .onChange(of: model.player.state.time) { _, _ in model.tick(model.player.state) }
+            .onChange(of: model.player.isPlaying) { _, _ in model.tick(model.player.state) }
+    }
 }
 
 // MARK: - Video cards
@@ -64,6 +92,7 @@ struct VideoCard: View {
             }
             .padding(.leading, 4)
         }
+        .flipCard(video, cornerRadius: 20)
         .videoContextMenu(video)
     }
 

@@ -85,7 +85,7 @@ struct WatchScreen: View {
     // MARK: Player (390 × 219 under a black status area)
 
     private func player(_ v: Video, chapters: [Chapter]) -> some View {
-        let s = model.player.state
+        let playing = model.player.isPlaying
         return ZStack {
             PlayerSurface(engine: model.player)
             Color.black.opacity(controlsVisible ? 0.28 : 0.001)
@@ -112,13 +112,13 @@ struct WatchScreen: View {
                     Button { previous(chapters) } label: { Image(systemName: "backward.end.fill").font(.system(size: 22)).frame(width: 44, height: 44) }
                         .accessibilityLabel("Previous chapter")
                     Button { model.player.toggle() } label: {
-                        Image(systemName: s.isPlaying ? "pause.fill" : "play.fill").font(.system(size: 24))
+                        Image(systemName: playing ? "pause.fill" : "play.fill").font(.system(size: 24))
                             .frame(width: 60, height: 60)
                             .background(.ultraThinMaterial, in: Circle())
                             .background(Color(hex: 0x0C0C10, opacity: 0.45), in: Circle())
                             .overlay(Circle().strokeBorder(.white.opacity(0.18)))
                     }
-                    .accessibilityLabel(s.isPlaying ? "Pause" : "Play")
+                    .accessibilityLabel(playing ? "Pause" : "Play")
                     Button { next(chapters) } label: { Image(systemName: "forward.end.fill").font(.system(size: 22)).frame(width: 44, height: 44) }
                         .accessibilityLabel("Next chapter")
                 }
@@ -126,10 +126,12 @@ struct WatchScreen: View {
                 VStack {
                     Spacer()
                     HStack {
-                        Text("\(Format.clock(s.time)) / \(Format.clock(s.duration))")
-                            .font(.system(size: 12, weight: .semibold).monospacedDigit())
-                        + Text(Chapter.current(in: chapters, at: s.time).map { " · \($0.title)" } ?? "")
-                            .font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.7))
+                        PlaybackText { s in
+                            Text("\(Format.clock(s.time)) / \(Format.clock(s.duration))")
+                                .font(.system(size: 12, weight: .semibold).monospacedDigit())
+                            + Text(Chapter.current(in: chapters, at: s.time).map { " · \($0.title)" } ?? "")
+                                .font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.7))
+                        }
                         Spacer()
                         Button { model.flash("Rotate your phone for full screen") } label: {
                             Image(systemName: "arrow.up.left.and.arrow.down.right").font(.system(size: 16, weight: .semibold)).frame(width: 32, height: 32)
@@ -165,7 +167,7 @@ struct WatchScreen: View {
                 if value.magnification < 0.8 { model.showSkim = true }
             })
         .task(id: controlsVisible) {
-            guard controlsVisible, model.player.state.isPlaying else { return }
+            guard controlsVisible, model.player.isPlaying else { return }
             try? await Task.sleep(for: .seconds(3.5))
             withAnimation { controlsVisible = false }
         }
@@ -266,7 +268,7 @@ struct WatchScreen: View {
     }
 
     private func chaptersCard(_ chapters: [Chapter]) -> some View {
-        let currentIndex = Chapter.current(in: chapters, at: model.player.state.time)?.index
+        let currentIndex = model.player.video?.id == current?.id || model.player.video?.id == video.id ? model.currentChapter : nil
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("Chapters").font(.system(size: 14, weight: .bold))

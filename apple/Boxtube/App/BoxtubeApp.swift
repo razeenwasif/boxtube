@@ -43,14 +43,7 @@ struct BoxtubeApp: App {
         }
         .windowLevel(.floating)
 
-        MenuBarExtra {
-            MenuBarPlayer()
-                .environment(model)
-                .preferredColorScheme(.dark)
-        } label: {
-            Image(systemName: "play.rectangle.fill")
-        }
-        .menuBarExtraStyle(.window)
+        // The menu bar icon is an AppKit status item (MenuBarStatusItem), installed by AppModel.start().
 
         Settings {
             MacSettings().environment(model).preferredColorScheme(.dark)

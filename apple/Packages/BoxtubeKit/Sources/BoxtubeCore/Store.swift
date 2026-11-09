@@ -139,6 +139,12 @@ public final class Store: Sendable {
         ValueObservation.tracking(fetch).values(in: writer, scheduling: .async(onQueue: .main))
     }
 
+    /// For comparable results: skips writes that don't change the answer (saving progress doesn't touch the
+    /// feed's videos, for example), so screens aren't redrawn for nothing.
+    public func values<T: Sendable & Equatable>(_ fetch: @escaping @Sendable (Database) throws -> T) -> AsyncValueObservation<T> {
+        ValueObservation.tracking(fetch).removeDuplicates().values(in: writer, scheduling: .async(onQueue: .main))
+    }
+
     public func read<T: Sendable>(_ fetch: @escaping @Sendable (Database) throws -> T) async throws -> T {
         try await writer.read(fetch)
     }
@@ -147,9 +153,32 @@ public final class Store: Sendable {
 
     public func upsert(videos: [Video], preserveDetails: Bool = true) async throws {
         guard !videos.isEmpty else { return }
+        try await writer.write { db in try Self.upsert(videos: videos, preserveDetails: preserveDetails, in: db) }
+    }
+
+    public func upsert(channels: [Channel]) async throws {
+        try await writer.write { db in try Self.upsert(channels: channels, in: db) }
+    }
+
+    /// Saves fetched channel feeds in one transaction and marks them fetched. Writing per channel woke
+    /// every open screen's query hundreds of times during a refresh.
+    public func saveFeeds(_ feeds: [(channel: Channel, videos: [Video])]) async throws {
+        guard !feeds.isEmpty else { return }
         try await writer.write { db in
-            for var video in videos {
-                if preserveDetails, let existing = try Video.fetchOne(db, key: video.id) {
+            let now = Date.now
+            for feed in feeds {
+                try Self.upsert(channels: [feed.channel], in: db)
+                try Self.upsert(videos: feed.videos, preserveDetails: true, in: db)
+                try db.execute(sql: "UPDATE channel SET lastFetchedAt = ? WHERE id = ?", arguments: [now, feed.channel.id])
+            }
+        }
+    }
+
+    /// Skips rows that wouldn't change, so a refresh that finds nothing new doesn't count as a change.
+    static func upsert(videos: [Video], preserveDetails: Bool, in db: Database) throws {
+        for var video in videos {
+            if let existing = try Video.fetchOne(db, key: video.id) {
+                if preserveDetails {
                     video.durationSeconds = video.durationSeconds ?? existing.durationSeconds
                     video.categoryId = video.categoryId ?? existing.categoryId
                     video.likeCount = video.likeCount ?? existing.likeCount
@@ -157,26 +186,28 @@ public final class Store: Sendable {
                     if video.summary.isEmpty { video.summary = existing.summary }
                     video.isShort = video.isShort || existing.isShort
                 }
-                try video.save(db)
+                var same = video
+                same.fetchedAt = existing.fetchedAt
+                if same == existing { continue }
             }
+            try video.save(db)
         }
     }
 
-    public func upsert(channels: [Channel]) async throws {
-        try await writer.write { db in
-            for var channel in channels {
-                if let existing = try Channel.fetchOne(db, key: channel.id) {
-                    channel.isSubscribed = existing.isSubscribed
-                    channel.subscribedAt = existing.subscribedAt
-                    channel.isMusic = existing.isMusic || channel.isMusic
-                    channel.lastSeenAt = existing.lastSeenAt
-                    channel.lastFetchedAt = channel.lastFetchedAt ?? existing.lastFetchedAt
-                    channel.avatarURL = channel.avatarURL ?? existing.avatarURL
-                    channel.subscriberCount = channel.subscriberCount ?? existing.subscriberCount
-                    if channel.title == channel.id { channel.title = existing.title }
-                }
-                try channel.save(db)
+    static func upsert(channels: [Channel], in db: Database) throws {
+        for var channel in channels {
+            if let existing = try Channel.fetchOne(db, key: channel.id) {
+                channel.isSubscribed = existing.isSubscribed
+                channel.subscribedAt = existing.subscribedAt
+                channel.isMusic = existing.isMusic || channel.isMusic
+                channel.lastSeenAt = existing.lastSeenAt
+                channel.lastFetchedAt = channel.lastFetchedAt ?? existing.lastFetchedAt
+                channel.avatarURL = channel.avatarURL ?? existing.avatarURL
+                channel.subscriberCount = channel.subscriberCount ?? existing.subscriberCount
+                if channel.title == channel.id { channel.title = existing.title }
+                if channel == existing { continue }
             }
+            try channel.save(db)
         }
     }
 
@@ -628,8 +659,10 @@ public enum Q {
     }
 
     public static func progress(_ db: Database) throws -> [String: Double] {
+        // Whole percents: progress is saved every 5 s while playing, and finer steps would redraw every
+        // card grid for changes too small to see.
         let entries = try HistoryEntry.fetchAll(db)
-        return Dictionary(uniqueKeysWithValues: entries.map { ($0.videoId, $0.progress) })
+        return Dictionary(uniqueKeysWithValues: entries.map { ($0.videoId, ($0.progress * 100).rounded() / 100) })
     }
 
     public static func playlists(_ db: Database, music: Bool? = nil) throws -> [PlaylistSummary] {

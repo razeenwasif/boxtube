@@ -138,7 +138,7 @@ final class PreviewController {
         guard allowed else { return }
         let engine = self.engine ?? PlayerEngine(muted: !soundOn)
         self.engine = engine
-        if soundOn, model.player.state.isPlaying { model.player.pause() }
+        if soundOn, model.player.isPlaying { model.player.pause() }
         startedAt = at
         withAnimation(.easeOut(duration: 0.2)) { videoId = video.id }
         engine.load(video, at: at)
@@ -154,7 +154,7 @@ final class PreviewController {
         soundOn.toggle()
         engine?.setStartMuted(!soundOn)
         // Two soundtracks at once would be noise: pause the main video while a preview is heard.
-        if soundOn, let model, model.player.state.isPlaying { model.player.pause() }
+        if soundOn, let model, model.player.isPlaying { model.player.pause() }
     }
 
     func stop() {

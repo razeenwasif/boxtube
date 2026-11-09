@@ -150,4 +150,23 @@ struct StoreTests {
         try await store.setWatched(v, false)
         #expect(try await store.read { db in try Q.history(db) }.isEmpty)
     }
+
+    @Test func savingFeedsKeepsDetailsMarksFetchedAndSkipsUnchangedVideos() async throws {
+        let store = try Store.inMemory()
+        try await store.subscribe(Channel(id: "a", title: "A"))
+        try await store.upsert(videos: [video("a1", channel: "a")])   // has a duration and category already
+        let before = try await store.read { db in try Video.fetchOne(db, key: "a1") }
+
+        // RSS brings the same video without details, plus a new one.
+        let rss = [Video(id: "a1", channelId: "a", channelTitle: "a", title: "a1", publishedAt: before!.publishedAt, fetchedAt: .now.addingTimeInterval(60)),
+                   Video(id: "a2", channelId: "a", channelTitle: "a", title: "a2", publishedAt: .now)]
+        try await store.saveFeeds([(Channel(id: "a", title: "A"), rss)])
+
+        let after = try await store.read { db in try Video.fetchOne(db, key: "a1") }
+        #expect(after == before)   // details kept, and not rewritten for a newer fetch time alone
+        #expect(try await store.read { db in try Video.fetchOne(db, key: "a2") } != nil)
+        let channel = try await store.read { db in try Channel.fetchOne(db, key: "a") }
+        #expect(channel?.isSubscribed == true)
+        #expect(channel?.lastFetchedAt != nil)
+    }
 }

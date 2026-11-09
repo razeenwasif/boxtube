@@ -72,6 +72,10 @@ final class AppModel {
     var quotaToday: Int { didSet { defaults.set(quotaToday, forKey: "quotaToday") } }
     var quotaDay: Date? { didSet { defaults.set(quotaDay, forKey: "quotaDay") } }
     @ObservationIgnored var syncDebounce: Task<Void, Never>?
+    #if os(macOS)
+    /// Opens a window scene by id; the main window registers it, so AppKit-hosted views (the menu bar panel) can use it.
+    @ObservationIgnored var openWindowAction: ((String) -> Void)?
+    #endif
 
     // Settings
     var calmMode: Bool { didSet { defaults.set(calmMode, forKey: "calmMode"); if calmMode { preview.stop() } } }
@@ -103,6 +107,10 @@ final class AppModel {
     var likedIds: Set<String> = []
     /// Videos you chose with Play next / Add to queue; they play before Autoplay's picks.
     var userQueue: [Video] = []
+    /// The playing video's current chapter. Changes only when the chapter does, so views that highlight
+    /// it don't re-render on every time update.
+    private(set) var currentChapter: Int?
+    @ObservationIgnored private var chapterCache: (id: String, chapters: [Chapter])?
     var playlistsCache: [PlaylistSummary] = []
     var progressById: [String: Double] = [:]
     var hidden = Q.HiddenSets()
@@ -195,6 +203,9 @@ final class AppModel {
         }
         _ = try? await store.purgeWatchLater(olderThan: clearAfterWeeks)
         observeLibrary()
+        #if os(macOS)
+        MenuBarStatusItem.install(model: self)
+        #endif
         await refresh()
     }
 
@@ -286,6 +297,12 @@ final class AppModel {
     /// Called from the time observer: stops a time-box chapter at its end.
     func tick(_ state: PlayerEngine.State) {
         nowPlaying.update(video: player.video, state: state)
+        var chapter: Int?
+        if let video = player.video {
+            if chapterCache?.id != video.id { chapterCache = (video.id, video.chapters) }
+            chapter = Chapter.current(in: chapterCache?.chapters ?? [], at: state.time)?.index
+        }
+        if chapter != currentChapter { currentChapter = chapter }
         if let end = activeSegmentEnd, state.time >= end - 0.3 { advanceQueue() }
         WatchTogether.shared.localStateChanged(isPlaying: state.isPlaying, time: state.time)
     }
@@ -306,7 +323,7 @@ final class AppModel {
         } else if player.playNextInQueue() {
             activeSegmentEnd = nil
         } else {
-            if activeSegmentEnd != nil, !player.state.ended { player.pause() }
+            if activeSegmentEnd != nil, !player.status.ended { player.pause() }
             activeSegmentEnd = nil
         }
     }

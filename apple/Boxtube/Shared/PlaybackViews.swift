@@ -4,6 +4,14 @@ import BoxtubeUI
 import BoxtubePlayer
 
 /// Interactive chapter scrubber: drag (or hover on Mac) to preview, release to seek.
+/// Text that follows the playback clock. It reads the time itself, so the view around it doesn't
+/// re-render four times a second while a video plays.
+struct PlaybackText: View {
+    @Environment(AppModel.self) private var model
+    var make: (PlayerEngine.State) -> Text
+    var body: some View { make(model.player.state) }
+}
+
 struct ChapterScrubber: View {
     @Environment(AppModel.self) private var model
     var chapters: [Chapter]
@@ -145,7 +153,7 @@ struct SkimView: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         LargeTitle("Skim", size: 26)
-                        Text(chapters.isEmpty ? "No chapters in this video's description" : "\(chapters.count) chapters · \(Format.minutes(model.player.state.duration)) · pinch in to go back")
+                        Text(chapters.isEmpty ? "No chapters in this video's description" : "\(chapters.count) chapters · \(Format.minutes(model.player.status.duration)) · pinch in to go back")
                             .font(.system(size: 12.5)).foregroundStyle(BX.muted)
                     }
                     Spacer()

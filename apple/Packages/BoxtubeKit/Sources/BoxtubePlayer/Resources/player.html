@@ -29,9 +29,14 @@ function onYouTubeIframeAPIReady() {
       onPlaybackRateChange: function (e) { post({ type: 'rate', rate: e.data }); }
     }
   });
+  // Only when something moved: a paused or idle player sends nothing, so the app isn't woken 4 times a second.
+  var last = { time: -1, duration: -1, loaded: -1 };
   setInterval(function () {
     if (ready && player && player.getCurrentTime) {
-      post({ type: 'time', time: player.getCurrentTime() || 0, duration: player.getDuration() || 0, loaded: player.getVideoLoadedFraction() || 0 });
+      var t = player.getCurrentTime() || 0, d = player.getDuration() || 0, l = player.getVideoLoadedFraction() || 0;
+      if (Math.abs(t - last.time) < 0.05 && Math.abs(d - last.duration) < 0.5 && Math.abs(l - last.loaded) < 0.01) return;
+      last = { time: t, duration: d, loaded: l };
+      post({ type: 'time', time: t, duration: d, loaded: l });
     }
   }, 250);
 }

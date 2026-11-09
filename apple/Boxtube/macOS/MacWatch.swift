@@ -260,7 +260,7 @@ struct MacWatchView: View {
 
     private func descriptionCard(_ v: Video) -> some View {
         let chapters = v.chapters
-        let current = Chapter.current(in: chapters, at: model.player.state.time)?.index
+        let current = model.player.video?.id == v.id ? model.currentChapter : nil
         let tags = Self.hashtags(in: v.summary)
         let meta = [Format.views(v.viewCount), Format.ago(v.publishedAt)].compactMap { $0 }.joined(separator: " · ")
         return VStack(alignment: .leading, spacing: 12) {

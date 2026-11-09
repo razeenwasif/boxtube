@@ -31,16 +31,16 @@ public struct VideoThumbnail: View {
         Color.clear
             .aspectRatio(aspect, contentMode: .fit)
             .overlay {
-                ZStack {
-                    ArtView(seed: video.id, title: video.title)
-                    LazyImage(url: video.bestThumbnail) { state in
-                        if let image = state.image {
-                            image.resizable().aspectRatio(contentMode: .fill)
-                        }
+                // The generated art is only a placeholder: once the thumbnail is in, it isn't laid out at all
+                // (its auto-shrinking title text is costly across a grid while scrolling).
+                LazyImage(url: video.bestThumbnail) { state in
+                    if let image = state.image {
+                        image.resizable().aspectRatio(contentMode: .fill)
+                    } else {
+                        ArtView(seed: video.id, title: video.title)
                     }
-                    .processors([.resize(width: 640)])
-                    .transition(.opacity)
                 }
+                .processors([.resize(width: 640)])
             }
             .clipShape(.rect(cornerRadius: radius, style: .continuous))
             .overlay(alignment: .bottomTrailing) {

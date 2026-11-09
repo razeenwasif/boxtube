@@ -11,6 +11,7 @@ enum MacSection: Hashable {
 struct MacRoot: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.openWindow) private var openWindow
     @State private var section: MacSection? = .home
     @State private var subs: [Q.SubscriptionRow] = []
     @State private var laterCount = 0
@@ -77,8 +78,8 @@ struct MacRoot: View {
             if let toast = model.toast { Toast(text: toast).padding(.top, 12) }
         }
         .sheet(isPresented: $model.showTimeBox) { TimeBoxView().frame(width: 460, height: 760) }
-        .onChange(of: model.player.state.time) { _, _ in model.tick(model.player.state) }
-        .onChange(of: model.player.state.isPlaying) { _, _ in model.tick(model.player.state) }
+        .background { PlaybackTicker() }
+        .onAppear { model.openWindowAction = { [openWindow] id in openWindow(id: id) } }
         .onChange(of: scenePhase) { _, phase in if phase != .active { model.preview.stop() } else { model.scheduleSync() } }
         .onChange(of: section) { _, s in
             model.watching = nil

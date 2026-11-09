@@ -11,7 +11,7 @@ struct MacCommands: Commands {
 
     var body: some Commands {
         CommandMenu("Playback") {
-            Button(model.player.state.isPlaying ? "Pause" : "Play") { model.player.toggle() }
+            Button(model.player.isPlaying ? "Pause" : "Play") { model.player.toggle() }
                 .keyboardShortcut(.space, modifiers: .option)
             Button("Back 10 Seconds") { model.player.skip(-10) }.keyboardShortcut(.leftArrow, modifiers: .command)
             Button("Forward 10 Seconds") { model.player.skip(10) }.keyboardShortcut(.rightArrow, modifiers: .command)
@@ -52,7 +52,7 @@ struct FloatingPlayerWindow: View {
             if hovering, model.player.video != nil {
                 HStack(spacing: 14) {
                     Button { model.player.skip(-10) } label: { Image(systemName: "gobackward.10") }
-                    Button { model.player.toggle() } label: { Image(systemName: model.player.state.isPlaying ? "pause.fill" : "play.fill").font(.system(size: 18)) }
+                    Button { model.player.toggle() } label: { Image(systemName: model.player.isPlaying ? "pause.fill" : "play.fill").font(.system(size: 18)) }
                     Button { model.player.skip(10) } label: { Image(systemName: "goforward.10") }
                     Spacer()
                     Menu {
@@ -92,7 +92,16 @@ struct FloatingPlayerWindow: View {
 
 struct MenuBarPlayer: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.openWindow) private var openWindow
+    /// Closes the menu bar panel.
+    var close: () -> Void = {}
+    /// Lets the panel follow the content's size.
+    var resized: () -> Void = {}
+
+    private func openWindow(id: String) {
+        model.openWindowAction?(id)
+        close()
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if let v = model.player.video {
@@ -105,7 +114,7 @@ struct MenuBarPlayer: View {
                 ProgressLine(value: model.player.state.progress, height: 3, track: .white.opacity(0.18)).clipShape(Capsule())
                 HStack(spacing: 26) {
                     Button { model.player.skip(-10) } label: { Image(systemName: "gobackward.10") }
-                    Button { model.player.toggle() } label: { Image(systemName: model.player.state.isPlaying ? "pause.fill" : "play.fill").font(.system(size: 20)) }
+                    Button { model.player.toggle() } label: { Image(systemName: model.player.isPlaying ? "pause.fill" : "play.fill").font(.system(size: 20)) }
                     Button { model.advanceQueue() } label: { Image(systemName: "forward.end.fill") }
                 }
                 .buttonStyle(.plain)
@@ -128,6 +137,7 @@ struct MenuBarPlayer: View {
         }
         .padding(14)
         .frame(width: 300)
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { _ in resized() }
     }
 }
 
@@ -353,7 +363,7 @@ struct MacMusic: View {
                     ForEach(Array(tracks.enumerated()), id: \.element.id) { i, t in
                         let on = model.player.video?.id == t.id
                         GridRow {
-                            Group { if on { EqualizerBars(animating: model.player.state.isPlaying) } else { Text("\(i + 1)") } }
+                            Group { if on { EqualizerBars(animating: model.player.isPlaying) } else { Text("\(i + 1)") } }
                                 .foregroundStyle(on ? BX.coralText : BX.dim)
                             HStack(spacing: 11) {
                                 VideoThumbnail(t, radius: 6, showDuration: false, aspect: 1).frame(width: 40, height: 40)
@@ -413,8 +423,7 @@ struct MacMusic: View {
     }
 
     private var playerBar: some View {
-        let s = model.player.state
-        return HStack(spacing: 20) {
+        HStack(spacing: 20) {
             HStack(spacing: 12) {
                 if let v = model.player.video {
                     VideoThumbnail(v, radius: 8, showDuration: false, aspect: 1).frame(width: 52, height: 52)
@@ -429,15 +438,15 @@ struct MacMusic: View {
                 HStack(spacing: 22) {
                     Button { model.player.seek(to: 0) } label: { Image(systemName: "backward.end.fill") }
                     Button { model.player.toggle() } label: {
-                        Image(systemName: s.isPlaying ? "pause.fill" : "play.fill").foregroundStyle(BX.ground).frame(width: 36, height: 36).background(BX.text, in: Circle())
+                        Image(systemName: model.player.isPlaying ? "pause.fill" : "play.fill").foregroundStyle(BX.ground).frame(width: 36, height: 36).background(BX.text, in: Circle())
                     }
                     Button { model.advanceQueue() } label: { Image(systemName: "forward.end.fill") }
                 }
                 .buttonStyle(.plain)
                 HStack(spacing: 10) {
-                    Text(Format.clock(s.time)).font(.system(size: 11.5).monospacedDigit()).foregroundStyle(BX.muted)
+                    PlaybackText { Text(Format.clock($0.time)) }.font(.system(size: 11.5).monospacedDigit()).foregroundStyle(BX.muted)
                     ChapterScrubber(chapters: [], tint: BX.text, showsPreview: false)
-                    Text(Format.clock(s.duration)).font(.system(size: 11.5).monospacedDigit()).foregroundStyle(BX.muted)
+                    Text(Format.clock(model.player.status.duration)).font(.system(size: 11.5).monospacedDigit()).foregroundStyle(BX.muted)
                 }
             }
             .frame(width: 520)

@@ -3,7 +3,10 @@ import WebKit
 import BoxtubeCore
 
 /// One WKWebView running the official YouTube IFrame Player, created once and moved between screens.
-/// Everything time-based in the app reads `state`.
+///
+/// The clock (`time`, `loaded`) is observed separately from everything else (`status`), so a view that only
+/// shows play/pause doesn't re-render four times a second while a video plays. `state` combines both, for
+/// views that need the time; values are only assigned when they change.
 @MainActor
 @Observable
 public final class PlayerEngine: NSObject {
@@ -23,7 +26,27 @@ public final class PlayerEngine: NSObject {
         public var remaining: Double { max(0, duration - time) }
     }
 
-    public private(set) var state = State()
+    /// Everything but the clock: video, duration, playing, buffering, rate, errors. Its `time` and `loaded` stay 0.
+    public private(set) var status = State()
+    /// Playback position, updated about four times a second while playing.
+    public private(set) var time: Double = 0
+    /// Fraction buffered.
+    public private(set) var loaded: Double = 0
+    /// Status and clock together. Reading it re-renders with every time update; prefer `status` or `isPlaying`.
+    public var state: State {
+        var s = status
+        s.time = time
+        s.loaded = loaded
+        return s
+    }
+    public var isPlaying: Bool { status.isPlaying }
+
+    private func update(_ change: (inout State) -> Void) {
+        var s = status
+        change(&s)
+        if s != status { status = s }
+    }
+    private func setTime(_ t: Double) { if t != time { time = t } }
     public private(set) var video: Video?
     public var queue: [Video] = []
 
@@ -80,24 +103,25 @@ public final class PlayerEngine: NSObject {
 
     public func load(_ video: Video, at start: Double = 0, autoplay: Bool = true) {
         self.video = video
-        state = State(videoId: video.id, duration: Double(video.durationSeconds ?? 0), isReady: state.isReady, rate: state.rate)
-        state.time = start
+        status = State(videoId: video.id, duration: Double(video.durationSeconds ?? 0), isReady: status.isReady, rate: status.rate)
+        setTime(start)
+        if loaded != 0 { loaded = 0 }
         js("load('\(video.id)', \(Int(start)), \(autoplay))")
     }
 
-    public func play() { js("cmd('play')"); state.isPlaying = true }
-    public func pause() { js("cmd('pause')"); state.isPlaying = false; reportProgress(force: true) }
-    public func toggle() { state.isPlaying ? pause() : play() }
+    public func play() { js("cmd('play')"); update { $0.isPlaying = true } }
+    public func pause() { js("cmd('pause')"); update { $0.isPlaying = false }; reportProgress(force: true) }
+    public func toggle() { status.isPlaying ? pause() : play() }
 
     public func seek(to seconds: Double) {
-        let clamped = max(0, state.duration > 0 ? min(seconds, state.duration - 0.5) : seconds)
-        state.time = clamped
+        let clamped = max(0, status.duration > 0 ? min(seconds, status.duration - 0.5) : seconds)
+        setTime(clamped)
         js("cmd('seek', \(clamped))")
     }
 
-    public func skip(_ delta: Double) { seek(to: state.time + delta) }
+    public func skip(_ delta: Double) { seek(to: time + delta) }
 
-    public func setRate(_ rate: Double) { state.rate = rate; js("cmd('rate', \(rate))") }
+    public func setRate(_ rate: Double) { update { $0.rate = rate }; js("cmd('rate', \(rate))") }
 
     public private(set) var muted = false
     public func setMuted(_ on: Bool) { muted = on; js(on ? "cmd('mute')" : "cmd('unmute')") }
@@ -117,7 +141,9 @@ public final class PlayerEngine: NSObject {
     public func stop() {
         pause()
         video = nil
-        state = State(isReady: state.isReady)
+        status = State(isReady: status.isReady)
+        setTime(0)
+        if loaded != 0 { loaded = 0 }
     }
 
     private func js(_ script: String) {
@@ -138,36 +164,38 @@ public final class PlayerEngine: NSObject {
         guard let type = body["type"] as? String else { return }
         switch type {
         case "ready":
-            state.isReady = true
+            update { $0.isReady = true }
         case "time":
-            let t = (body["time"] as? Double) ?? state.time
+            let t = (body["time"] as? Double) ?? time
             let d = (body["duration"] as? Double) ?? 0
-            if abs(t - state.time) > 0.05 { state.time = t }
-            if d > 0, abs(d - state.duration) > 0.5 { state.duration = d }
-            state.loaded = (body["loaded"] as? Double) ?? state.loaded
+            if abs(t - time) > 0.05 { time = t }
+            if d > 0, abs(d - status.duration) > 0.5 { update { $0.duration = d } }
+            if let l = body["loaded"] as? Double, abs(l - loaded) > 0.01 { loaded = l }
             reportProgress(force: false)
         case "state":
             let code = body["state"] as? Int ?? -1
-            if let d = body["duration"] as? Double, d > 0 { state.duration = d }
-            state.isPlaying = code == 1
-            state.isBuffering = code == 3
-            state.ended = code == 0
+            update { s in
+                if let d = body["duration"] as? Double, d > 0 { s.duration = d }
+                s.isPlaying = code == 1
+                s.isBuffering = code == 3
+                s.ended = code == 0
+            }
             if code == 2 { reportProgress(force: true) }
             if code == 0, let video {
                 reportProgress(force: true)
                 onEnded?(video)
             }
         case "rate":
-            state.rate = body["rate"] as? Double ?? state.rate
+            update { $0.rate = body["rate"] as? Double ?? $0.rate }
         case "error":
-            state.errorCode = body["code"] as? Int
+            update { $0.errorCode = body["code"] as? Int }
         default:
             break
         }
     }
 
     private func reportProgress(force: Bool) {
-        guard let video, state.duration > 0 else { return }
+        guard let video, status.duration > 0 else { return }
         if force || Date.now.timeIntervalSince(lastProgressReport) > 5 {
             lastProgressReport = .now
             onProgress?(video, state)

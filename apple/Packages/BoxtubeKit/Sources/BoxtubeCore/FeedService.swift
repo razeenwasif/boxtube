@@ -40,18 +40,24 @@ public actor FeedService {
                 group.addTask { try? await RSSFeed.fetch(channelId: channel.id) }
             }
             for _ in 0..<6 { addNext() }
+            // Saved in batches: each write wakes every open screen's query, so a write per channel made
+            // a refresh redraw the app hundreds of times.
+            var pending: [(channel: Channel, videos: [Video])] = []
             while let result = await group.next() {
                 if let result {
-                    try? await store.upsert(channels: [result.channel])
-                    try? await store.upsert(videos: result.videos)
-                    try? await store.setFetched(channelId: result.channel.id)
+                    pending.append((result.channel, result.videos))
                     report.channels += 1
                     report.videos += result.videos.count
                 } else {
                     report.failures += 1
                 }
+                if pending.count >= 20 {
+                    try? await store.saveFeeds(pending)
+                    pending = []
+                }
                 addNext()
             }
+            try? await store.saveFeeds(pending)
         }
 
         if client.hasKey {

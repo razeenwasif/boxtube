@@ -301,6 +301,7 @@ struct MacVideoCard: View {
                 VideoMoreButton(video: video).padding(.top, -6)
             }
         }
+        .flipCard(video, cornerRadius: 14, channelAvatar: channel?.avatarURL)
         .videoContextMenu(video)
         .observing(model.store, id: video.channelId, { [id = video.channelId] db in try Channel.fetchOne(db, key: id) }) { channel = $0 }
     }

@@ -149,7 +149,7 @@ struct Island: View {
             .onChanged { v in
                 guard model.player.video != nil, !onMedia, abs(v.translation.width) > abs(v.translation.height) * 1.4 else { return }
                 if scrubTime == nil { scrubStart = model.player.state.time }
-                let d = max(model.player.state.duration, 1)
+                let d = max(model.player.status.duration, 1)
                 scrubTime = max(0, min(d, scrubStart + Double(v.translation.width / 300) * d * 0.5))
             }
             .onEnded { _ in
@@ -216,7 +216,7 @@ private struct ScrubIsland: View {
     var time: Double
 
     var body: some View {
-        let d = max(model.player.state.duration, 1)
+        let d = max(model.player.status.duration, 1)
         let chapters = video.chapters
         VStack(spacing: 10) {
             ScrubPreview(video: video, time: time, chapter: Chapter.current(in: chapters, at: time))
