@@ -341,6 +341,7 @@ extension Q {
         var candidates = try Video.fetchAll(db, sql: """
             SELECT video.* FROM video LEFT JOIN channel ON channel.id = video.channelId
             WHERE video.isShort = 0 AND video.isLive = 0
+              AND video.id NOT IN (SELECT videoId FROM movie)
               AND ((video.publishedAt > ? AND (channel.isSubscribed = 1 OR ?))
                    OR video.id IN (SELECT videoId FROM listCache WHERE key LIKE 'topic:%' OR (? AND key LIKE 'rec:%')))
             ORDER BY video.publishedAt DESC LIMIT 900

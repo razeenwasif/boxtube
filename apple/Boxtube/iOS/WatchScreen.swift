@@ -22,51 +22,40 @@ struct WatchScreen: View {
     @State private var showNotes = false
     @State private var disliked = false
     @State private var together = WatchTogether.shared
+    @State private var showQueue = false
+    /// Held down on the video: plays at 2× until let go, then goes back to this speed.
+    @State private var holdingFrom: Double?
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     var body: some View {
         let v = current ?? video
         let chapters = v.chapters
-        VStack(spacing: 0) {
-            player(v, chapters: chapters)
-            if together.isActive { TogetherBanner(together: together).padding(.horizontal, 12).padding(.top, 10) }
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    titleBlock(v)
-                    channelRow(v)
-                    actions(v)
-                    if expanded, !v.summary.isEmpty {
-                        Text(v.summary).font(.system(size: 13.5)).foregroundStyle(BX.text2).textSelection(.enabled)
-                            .padding(14).frame(maxWidth: .infinity, alignment: .leading).cardSurface()
-                    }
-                    if !chapters.isEmpty { chaptersCard(chapters) }
-                    commentsCard(v)
-                    if !notes.isEmpty { notesCard }
-                    if together.isActive { VoteCard(together: together, candidates: Array(upNext.prefix(2))) }
-                    if !model.userQueue.isEmpty {
-                        QueuePanel(thumbWidth: 104).cardSurface()
-                    }
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Up next").font(.system(size: 17, weight: .bold)).accessibilityAddTraits(.isHeader)
-                        ForEach(upNext) { n in upNextCard(n) }
-                    }
-                    .padding(.top, 4)
-                }
-                .padding(.horizontal, 16).padding(.top, 14)
-                .padding(.bottom, together.isActive ? 100 : 30)
+        let fullScreen = verticalSizeClass == .compact
+        Group {
+            if fullScreen {
+                // Landscape: just the video, edge to edge.
+                player(v, chapters: chapters, fullScreen: true)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(.black)
+                    .ignoresSafeArea()
+            } else {
+                portrait(v, chapters: chapters)
             }
         }
-        .background(BX.ground)
-        .overlay(alignment: .bottom) {
-            if together.isActive { ReactionBar(together: together).padding(.horizontal, 14).padding(.bottom, 8) }
-        }
-        .offset(y: dragOffset)
+        .statusBarHidden(fullScreen)
+        .persistentSystemOverlays(fullScreen ? .hidden : .automatic)
         .sheet(isPresented: Binding(get: { model.showSkim }, set: { model.showSkim = $0 })) {
             SkimView(video: v).environment(model).presentationDetents([.large])
         }
         .sheet(isPresented: $showNotes) {
             NotesPanel(video: v).environment(model).bxMenuHost().presentationDetents([.medium, .large]).presentationBackground(BX.surface)
         }
-        .onAppear { current = model.player.video ?? video }
+        .sheet(isPresented: $showQueue) {
+            PhoneQueueSheet(upNext: upNext).environment(model).bxMenuHost()
+                .presentationDetents([.medium, .large]).presentationBackground(BX.ground).presentationDragIndicator(.visible)
+        }
+        .onAppear { current = model.player.video ?? video; Orientation.allowRotation(true) }
+        .onDisappear { endHold(); Orientation.allowRotation(false) }
         .onChange(of: model.player.video?.id) { _, _ in if let pv = model.player.video { current = pv } }
         .observing(model.store, id: v.channelId, { [cid = v.channelId] db in try Channel.fetchOne(db, key: cid) }) { channel = $0 }
         .observing(model.store, id: v.id, { [cid = v.channelId, vid = v.id] db in
@@ -82,24 +71,87 @@ struct WatchScreen: View {
         }
     }
 
+    private func portrait(_ v: Video, chapters: [Chapter]) -> some View {
+        VStack(spacing: 0) {
+            player(v, chapters: chapters, fullScreen: false)
+            if together.isActive { TogetherBanner(together: together).padding(.horizontal, 12).padding(.top, 10) }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    titleBlock(v)
+                    channelRow(v)
+                    actions(v)
+                    if !model.userQueue.isEmpty {
+                        QueuePanel(thumbWidth: 104).cardSurface()
+                    }
+                    if expanded, !v.summary.isEmpty {
+                        Text(v.summary).font(.system(size: 13.5)).foregroundStyle(BX.text2).textSelection(.enabled)
+                            .padding(14).frame(maxWidth: .infinity, alignment: .leading).cardSurface()
+                    }
+                    if !chapters.isEmpty { chaptersCard(chapters) }
+                    commentsCard(v)
+                    if !notes.isEmpty { notesCard }
+                    if together.isActive { VoteCard(together: together, candidates: Array(upNext.prefix(2))) }
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Up next").font(.system(size: 17, weight: .bold)).accessibilityAddTraits(.isHeader)
+                        ForEach(upNext) { n in upNextCard(n) }
+                    }
+                    .padding(.top, 4)
+                }
+                .padding(.horizontal, 16).padding(.top, 14)
+                .padding(.bottom, together.isActive ? 100 : 30)
+            }
+        }
+        .background(BX.ground)
+        .overlay(alignment: .bottom) {
+            if together.isActive { ReactionBar(together: together).padding(.horizontal, 14).padding(.bottom, 8) }
+        }
+        .offset(y: dragOffset)
+    }
+
     // MARK: Player (390 × 219 under a black status area)
 
-    private func player(_ v: Video, chapters: [Chapter]) -> some View {
+    private func player(_ v: Video, chapters: [Chapter], fullScreen: Bool) -> some View {
         let playing = model.player.isPlaying
         return ZStack {
             PlayerSurface(engine: model.player)
             Color.black.opacity(controlsVisible ? 0.28 : 0.001)
                 .contentShape(Rectangle())
                 .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { controlsVisible.toggle() } }
+                // Hold anywhere on the video for 2×; let go to return to the speed it was.
+                .gesture(SpeedHold { holding in holding ? startHold() : endHold() })
+            if holdingFrom != nil {
+                VStack {
+                    Label("2×", systemImage: "forward.fill")
+                        .font(.system(size: 13, weight: .bold))
+                        .padding(.horizontal, 12).frame(height: 30)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .background(Color(hex: 0x0C0C10, opacity: 0.45), in: Capsule())
+                        .padding(.top, 12)
+                        .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                    Spacer()
+                }
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
             if controlsVisible {
                 // top row
                 VStack {
                     HStack(spacing: 2) {
-                        Button { dismiss() } label: { IconView(.chevronDown, size: 22, lineWidth: 2.2).frame(width: 36, height: 36) }
-                            .accessibilityLabel("Minimise")
+                        Button { if fullScreen { Orientation.setFullScreen(false) } else { dismiss() } } label: {
+                            IconView(.chevronDown, size: 22, lineWidth: 2.2).frame(width: 40, height: 40).contentShape(Rectangle())
+                        }
+                        .accessibilityLabel(fullScreen ? "Exit full screen" : "Minimise")
+                        if fullScreen {
+                            Text(v.title).font(.system(size: 15, weight: .semibold)).lineLimit(1).padding(.leading, 4)
+                        }
                         Spacer()
-                        Button { model.player.setCaptions(!model.player.captionsOn) } label: {
-                            Image(systemName: model.player.captionsOn ? "captions.bubble.fill" : "captions.bubble").font(.system(size: 18)).frame(width: 36, height: 36)
+                        Button {
+                            let on = !model.player.captionsOn
+                            model.player.setCaptions(on)
+                            model.flash(on ? "Captions on" : "Captions off")
+                        } label: {
+                            Image(systemName: model.player.captionsOn ? "captions.bubble.fill" : "captions.bubble").font(.system(size: 18))
+                                .frame(width: 40, height: 40).contentShape(Rectangle())
                         }
                         .accessibilityLabel(model.player.captionsOn ? "Turn off captions" : "Turn on captions")
                         CastButton(size: 36, fill: .clear)
@@ -109,7 +161,7 @@ struct WatchScreen: View {
                 }
                 // centre controls
                 HStack(spacing: 30) {
-                    Button { previous(chapters) } label: { Image(systemName: "backward.end.fill").font(.system(size: 22)).frame(width: 44, height: 44) }
+                    Button { previous(chapters) } label: { Image(systemName: "backward.end.fill").font(.system(size: 22)).frame(width: 48, height: 48).contentShape(Rectangle()) }
                         .accessibilityLabel("Previous chapter")
                     Button { model.player.toggle() } label: {
                         Image(systemName: playing ? "pause.fill" : "play.fill").font(.system(size: 24))
@@ -117,9 +169,10 @@ struct WatchScreen: View {
                             .background(.ultraThinMaterial, in: Circle())
                             .background(Color(hex: 0x0C0C10, opacity: 0.45), in: Circle())
                             .overlay(Circle().strokeBorder(.white.opacity(0.18)))
+                            .contentShape(Circle())
                     }
                     .accessibilityLabel(playing ? "Pause" : "Play")
-                    Button { next(chapters) } label: { Image(systemName: "forward.end.fill").font(.system(size: 22)).frame(width: 44, height: 44) }
+                    Button { next(chapters) } label: { Image(systemName: "forward.end.fill").font(.system(size: 22)).frame(width: 48, height: 48).contentShape(Rectangle()) }
                         .accessibilityLabel("Next chapter")
                 }
                 // bottom row
@@ -133,13 +186,14 @@ struct WatchScreen: View {
                                 .font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.7))
                         }
                         Spacer()
-                        Button { model.flash("Rotate your phone for full screen") } label: {
-                            Image(systemName: "arrow.up.left.and.arrow.down.right").font(.system(size: 16, weight: .semibold)).frame(width: 32, height: 32)
+                        Button { Orientation.setFullScreen(!fullScreen) } label: {
+                            Image(systemName: fullScreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+                                .font(.system(size: 16, weight: .semibold)).frame(width: 40, height: 40).contentShape(Rectangle())
                         }
-                        .accessibilityLabel("Full screen")
+                        .accessibilityLabel(fullScreen ? "Exit full screen" : "Full screen")
                     }
                     .lineLimit(1)
-                    .padding(.horizontal, 14).padding(.bottom, 12)
+                    .padding(.horizontal, 14).padding(.bottom, fullScreen ? 18 : 8)
                 }
             }
             // chapter segments on the bottom edge (always visible) + knob
@@ -153,11 +207,20 @@ struct WatchScreen: View {
         .aspectRatio(16 / 9, contentMode: .fit)
         .background(.black)
         .background(alignment: .top) { Color.black.frame(height: 200).offset(y: -200).ignoresSafeArea() }
-        .gesture(DragGesture().onChanged { g in
-            if !pinching, g.translation.height > 0 { dragOffset = g.translation.height * 0.6 }
+        // Swipe down to minimise (or leave full screen); swipe up for full screen.
+        .gesture(DragGesture(minimumDistance: 14).onChanged { g in
+            if !pinching, !fullScreen, holdingFrom == nil, g.translation.height > 0 { dragOffset = g.translation.height * 0.6 }
         }.onEnded { g in
-            if !pinching, g.translation.height > 120 { dismiss() }
-            withAnimation(.snappy) { dragOffset = 0 }
+            defer { withAnimation(.snappy) { dragOffset = 0 } }
+            guard !pinching, holdingFrom == nil else { return }
+            let h = g.translation.height, vertical = abs(h) > abs(g.translation.width)
+            if fullScreen {
+                if vertical, h > 80 { Orientation.setFullScreen(false) }
+            } else if vertical, h > 120 {
+                dismiss()
+            } else if vertical, h < -60 {
+                Orientation.setFullScreen(true)
+            }
         })
         // Pinch in to Skim. Runs alongside the swipe-down drag, which stands down while two fingers pinch.
         .simultaneousGesture(MagnifyGesture()
@@ -171,6 +234,20 @@ struct WatchScreen: View {
             try? await Task.sleep(for: .seconds(3.5))
             withAnimation { controlsVisible = false }
         }
+    }
+
+    private func startHold() {
+        guard holdingFrom == nil else { return }
+        holdingFrom = model.player.state.rate
+        model.player.setRate(2)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(.easeOut(duration: 0.15)) { controlsVisible = false }
+    }
+
+    private func endHold() {
+        guard let from = holdingFrom else { return }
+        model.player.setRate(from)
+        withAnimation(.easeOut(duration: 0.15)) { holdingFrom = nil }
     }
 
     private func previous(_ chapters: [Chapter]) {
@@ -253,6 +330,7 @@ struct WatchScreen: View {
                 .background(Color(hex: 0x1C1C20), in: Capsule())
                 ShareLink(item: v.watchURL) { PillLabel(title: "Share", icon: "square.and.arrow.up", active: false) }
                 Pill(saved ? "Saved" : "Save", icon: saved ? "clock.fill" : "clock", active: saved) { model.toggleWatchLater(v.id) }
+                Pill(model.userQueue.isEmpty ? "Queue" : "Queue · \(model.userQueue.count)", icon: "list.bullet", active: !model.userQueue.isEmpty) { showQueue = true }
                 BXMenuButton {
                     BXMenuSection("Add to playlist") {
                         if playlists.isEmpty { BXMenuItem.note("No playlists yet", icon: "music.note.list", tint: BX.muted) }
@@ -453,5 +531,22 @@ struct PillLabel: View {
         .padding(.horizontal, 14).frame(height: 36)
         .foregroundStyle(active ? BX.coralText : BX.text)
         .background(active ? BX.coral.opacity(0.15) : Color(hex: 0x1C1C20), in: Capsule())
+    }
+}
+
+/// A UIKit long press, so holding the video cancels the tap that would show the controls.
+private struct SpeedHold: UIGestureRecognizerRepresentable {
+    var changed: (Bool) -> Void
+    func makeUIGestureRecognizer(context: Context) -> UILongPressGestureRecognizer {
+        let g = UILongPressGestureRecognizer()
+        g.minimumPressDuration = 0.35
+        return g
+    }
+    func handleUIGestureRecognizerAction(_ recognizer: UILongPressGestureRecognizer, context: Context) {
+        switch recognizer.state {
+        case .began: changed(true)
+        case .ended, .cancelled, .failed: changed(false)
+        default: break
+        }
     }
 }

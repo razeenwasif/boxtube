@@ -78,6 +78,7 @@ struct RouteScreen: View {
         case .search(let q): SearchResultsScreen(query: q)
         case .musicLibrary: MusicLibraryScreen()
         case .notes: NotesScreen()
+        case .movies: MoviesScreen()
         }
     }
 }

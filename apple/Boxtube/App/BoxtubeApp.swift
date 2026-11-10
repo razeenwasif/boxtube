@@ -5,6 +5,9 @@ import BoxtubeUI
 @main
 struct BoxtubeApp: App {
     @State private var model = AppModel()
+    #if os(iOS)
+    @UIApplicationDelegateAdaptor(BoxtubeAppDelegate.self) private var appDelegate
+    #endif
 
     var body: some Scene {
         #if os(iOS)

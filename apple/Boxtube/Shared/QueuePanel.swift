@@ -134,3 +134,66 @@ struct QueuePanel: View {
         }
     }
 }
+
+#if os(iOS)
+/// The queue on iPhone, from the Watch screen's Queue button: what's playing, what you queued
+/// (tap, ⋯, drag to reorder), and what autoplay would pick next, each with a + to queue it.
+struct PhoneQueueSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    var upNext: [Video]
+
+    var body: some View {
+        let queued = Set(model.userQueue.map(\.id))
+        let suggestions = upNext.filter { !queued.contains($0.id) && $0.id != model.player.video?.id }.prefix(8)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    Text("Queue").font(BX.display(28, .bold)).kerning(-0.6)
+                    Spacer()
+                    Button("Done") { dismiss() }.buttonStyle(.bx(.secondary, height: 34))
+                }
+                .padding(.top, 18)
+                if let now = model.player.video {
+                    HStack(spacing: 12) {
+                        VideoThumbnail(now, radius: 9, showDuration: false).frame(width: 96)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("PLAYING NOW").font(.system(size: 10.5, weight: .bold)).kerning(0.8).foregroundStyle(BX.coralText)
+                            Text(now.title).font(.system(size: 14, weight: .semibold)).lineLimit(2)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                }
+                if model.userQueue.isEmpty {
+                    HintCard(icon: "list.bullet", title: "Nothing queued",
+                             message: "Tap + below, or choose Play next or Add to queue in any video's ⋯ menu. Queued videos play before autoplay picks.")
+                } else {
+                    QueuePanel(thumbWidth: 104).cardSurface()
+                }
+                if !suggestions.isEmpty {
+                    Text("Autoplay picks next").font(.system(size: 16, weight: .bold)).padding(.top, 6).accessibilityAddTraits(.isHeader)
+                    ForEach(Array(suggestions)) { v in
+                        HStack(spacing: 12) {
+                            VideoThumbnail(v, radius: 9).frame(width: 104)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(v.title).font(.system(size: 13.5, weight: .semibold)).lineLimit(2)
+                                Text(v.channelTitle).font(.system(size: 12)).foregroundStyle(BX.muted).lineLimit(1)
+                            }
+                            Spacer(minLength: 0)
+                            Button { model.addToQueue(v) } label: {
+                                Image(systemName: "plus").font(.system(size: 14, weight: .bold)).foregroundStyle(BX.coralInk)
+                                    .frame(width: 34, height: 34).background(BX.coral, in: Circle()).contentShape(Circle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Add \(v.title) to the queue")
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 16).padding(.bottom, 40)
+        }
+        .foregroundStyle(BX.text)
+        .environment(\.colorScheme, .dark)
+    }
+}
+#endif

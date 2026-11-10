@@ -45,6 +45,7 @@ enum Route: Hashable {
     case search(String)
     case musicLibrary
     case notes
+    case movies
 }
 
 /// A playable segment from a time box (start/end inside a video).
@@ -198,6 +199,10 @@ final class AppModel {
             guard let self else { return }
             Task { try? await self.store.recordProgress(videoId: video.id, position: state.time, duration: state.duration) }
             self.onPlaybackChanged?(video, state)
+        }
+        player.onCaptionsUnavailable = { [weak self] in
+            self?.player.setCaptions(false)
+            self?.flash("This video has no captions")
         }
         player.onEnded = { [weak self] _ in
             guard let self else { return }

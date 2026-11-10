@@ -369,6 +369,7 @@ struct PlaylistsScreen: View {
     @State private var laterCount = 0
     @State private var likedCount = 0
     @State private var historyCount = 0
+    @State private var movieCount = 0
     @State private var toDelete: Playlist?
     @State private var toPublish: PlaylistSummary?
     @State private var publishing: Set<String> = []
@@ -380,12 +381,19 @@ struct PlaylistsScreen: View {
                 ScreenHeader("Playlists") {
                     CircleIconButtonView(label: "New playlist", fill: BX.coral, tint: BX.coralInk) { IconView(.plus, size: 20, lineWidth: 2.4) } action: { newPlaylist() }
                 }
-                HStack(spacing: 10) {
-                    tile("Watch later", "\(laterCount) videos", icon: .clock, tint: BX.amber) { model.push(.watchLater) }
-                    tile("Liked", "\(likedCount) videos", icon: .heart, tint: BX.coralText) { model.push(.liked) }
-                    tile("History", "\(historyCount) videos", icon: .history, tint: BX.teal) { model.push(.history) }
+                // Three tiles as in the artboard, with Movies peeking in from the right.
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        tile("Watch later", "\(laterCount) videos", icon: .clock, tint: BX.amber) { model.push(.watchLater) }
+                        tile("Liked", "\(likedCount) videos", icon: .heart, tint: BX.coralText) { model.push(.liked) }
+                        tile("History", "\(historyCount) videos", icon: .history, tint: BX.teal) { model.push(.history) }
+                        tile("Movies", movieCount == 1 ? "1 movie" : "\(movieCount) movies", symbol: "film", tint: Color(hex: 0xB3A1FF)) { model.push(.movies) }
+                    }
+                    .scrollTargetLayout()
                 }
-                .padding(.horizontal, 16).padding(.top, 18)
+                .contentMargins(.horizontal, 16, for: .scrollContent)
+                .scrollTargetBehavior(.viewAligned)
+                .padding(.top, 18)
 
                 HStack {
                     Text("Your playlists").font(.system(size: 18, weight: .bold)).kerning(-0.18).accessibilityAddTraits(.isHeader)
@@ -422,6 +430,7 @@ struct PlaylistsScreen: View {
         .playlistDeleteDialog($toDelete)
         .playlistPublishDialog($toPublish)
         .observing(model.store, { db in try Q.publishingPlaylists(db) }) { publishing = $0 }
+        .observing(model.store, { db in try Movie.fetchCount(db) }) { movieCount = $0 }
         .observing(model.store, { db in try Q.playlists(db) }) { playlists = $0 }
         .observing(model.store, { db in (try WatchLaterEntry.fetchCount(db), try LikedVideo.fetchCount(db), try HistoryEntry.fetchCount(db)) }) {
             laterCount = $0.0; likedCount = $0.1; historyCount = $0.2
@@ -438,11 +447,14 @@ struct PlaylistsScreen: View {
         sortRecent ? playlists : playlists.sorted { $0.playlist.title.localizedCaseInsensitiveCompare($1.playlist.title) == .orderedAscending }
     }
 
-    private func tile(_ title: String, _ sub: String, icon: BXIcon, tint: Color, action: @escaping () -> Void) -> some View {
+    private func tile(_ title: String, _ sub: String, icon: BXIcon? = nil, symbol: String? = nil, tint: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 0) {
-                IconView(icon, size: 18, lineWidth: 2).foregroundStyle(tint)
-                    .frame(width: 34, height: 34).background(tint.opacity(0.16), in: Circle())
+                Group {
+                    if let icon { IconView(icon, size: 18, lineWidth: 2) } else { Image(systemName: symbol ?? "circle").font(.system(size: 15, weight: .semibold)) }
+                }
+                .foregroundStyle(tint)
+                .frame(width: 34, height: 34).background(tint.opacity(0.16), in: Circle())
                 Spacer(minLength: 0)
                 Text(title).font(.system(size: 13.5, weight: .semibold)).lineLimit(1)
                 Text(sub).font(.system(size: 12)).foregroundStyle(BX.muted).lineLimit(1)
@@ -450,6 +462,7 @@ struct PlaylistsScreen: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
             .frame(height: 100)
+            .containerRelativeFrame(.horizontal, count: 7, span: 2, spacing: 10)
             .background(Color(hex: 0x151518), in: .rect(cornerRadius: 18, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(.white.opacity(0.06)))
         }

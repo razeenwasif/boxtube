@@ -181,6 +181,19 @@ public actor FeedService {
         return videos
     }
 
+    /// YouTube's movies matching `text` (search costs 100 quota units).
+    public func searchMovies(_ text: String) async throws -> [Video] {
+        let videos = try await client.search(text, videoType: "movie")
+        try await store.upsert(videos: videos)
+        return videos
+    }
+
+    /// A video's details for filing it somewhere: the API with a key, otherwise just its title and channel.
+    public func lookUpVideo(_ id: String) async -> Video? {
+        if let v = await ensureVideo(id) { return v }
+        return await YouTubeClient.oEmbed(videoId: id)
+    }
+
     public func searchChannels(_ text: String) async throws -> [Channel] {
         let channels = try await client.searchChannels(text)
         try await store.upsert(channels: channels)

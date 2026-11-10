@@ -57,8 +57,11 @@ public actor YouTubeClient {
         return page.items.map(\.video)
     }
 
-    public func search(_ text: String, duration: String? = nil, publishedAfter: Date? = nil, order: String? = nil) async throws -> [Video] {
+    /// `videoType: "movie"` limits results to YouTube's movies (bought, rented or free with ads).
+    public func search(_ text: String, duration: String? = nil, publishedAfter: Date? = nil, order: String? = nil,
+                       videoType: String? = nil) async throws -> [Video] {
         var query = ["part": "snippet", "q": text, "type": "video", "maxResults": "25", "safeSearch": "moderate"]
+        if let videoType { query["videoType"] = videoType }
         if let duration { query["videoDuration"] = duration }
         if let publishedAfter { query["publishedAfter"] = ISO8601DateFormatter().string(from: publishedAfter) }
         if let order { query["order"] = order }
@@ -67,6 +70,17 @@ public actor YouTubeClient {
         let details = try await videos(ids: ids)
         let byId = Dictionary(uniqueKeysWithValues: details.map { ($0.id, $0) })
         return ids.compactMap { byId[$0] }
+    }
+
+    /// A video's title and channel name without an API key, from YouTube's oEmbed endpoint.
+    public static func oEmbed(videoId: String) async -> Video? {
+        var c = URLComponents(string: "https://www.youtube.com/oembed")!
+        c.queryItems = [URLQueryItem(name: "url", value: "https://www.youtube.com/watch?v=\(videoId)"), URLQueryItem(name: "format", value: "json")]
+        struct Embed: Decodable { var title: String; var author_name: String? }
+        guard let url = c.url, let (data, response) = try? await URLSession.shared.data(from: url),
+              (response as? HTTPURLResponse)?.statusCode == 200,
+              let e = try? JSONDecoder().decode(Embed.self, from: data) else { return nil }
+        return Video(id: videoId, channelId: "", channelTitle: e.author_name ?? "YouTube", title: e.title, publishedAt: .now)
     }
 
     public func searchChannels(_ text: String) async throws -> [Channel] {

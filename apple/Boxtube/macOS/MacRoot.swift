@@ -4,7 +4,7 @@ import BoxtubeUI
 import BoxtubePlayer
 
 enum MacSection: Hashable {
-    case home, shorts, explore, subscriptions, playlists, watchLater, history, liked, notes, music, timeBox
+    case home, shorts, explore, subscriptions, playlists, watchLater, movies, history, liked, notes, music, timeBox
     case channel(String)
 }
 
@@ -203,6 +203,7 @@ struct MacRoot: View {
             case .subscriptions: MacSubscriptions()
             case .playlists: MacPlaylists()
             case .watchLater: MacWatchLater()
+            case .movies: MoviesScreen()
             case .history: MacVideoGrid(title: "History", fetch: { db in try Q.history(db, limit: 120).map(\.video) })
             case .liked: MacVideoGrid(title: "Liked videos", fetch: { db in try Q.liked(db) })
             case .notes: MacAllNotes()
@@ -264,6 +265,7 @@ struct MacSidebar: View {
                     row(.watchLater, "Watch later", "clock") {
                         if laterCount > 0 { Text("\(laterCount)").font(.system(size: 12)).foregroundStyle(BX.dim) }
                     }
+                    row(.movies, "Movies", "film")
                     row(.history, "History", "clock.arrow.circlepath")
                     row(.liked, "Liked videos", "heart")
                     row(.notes, "Notes", "note.text")
@@ -472,6 +474,7 @@ struct MacRouteScreen: View {
         case .search(let q): MacSearch(query: q)
         case .musicLibrary: MacMusic()
         case .notes: MacAllNotes()
+        case .movies: MoviesScreen()
         }
     }
 }

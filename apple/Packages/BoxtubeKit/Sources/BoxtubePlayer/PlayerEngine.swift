@@ -53,6 +53,8 @@ public final class PlayerEngine: NSObject {
     /// Called roughly every 5 s and on pause, so the app can persist progress and update Live Activities.
     public var onProgress: ((Video, State) -> Void)?
     public var onEnded: ((Video) -> Void)?
+    /// Captions were asked for, but this video has none.
+    public var onCaptionsUnavailable: (() -> Void)?
 
     public let webView: WKWebView
     /// Surfaces that want the video; the most recent one shows it.
@@ -185,6 +187,8 @@ public final class PlayerEngine: NSObject {
                 reportProgress(force: true)
                 onEnded?(video)
             }
+        case "cc":
+            if body["available"] as? Bool == false { onCaptionsUnavailable?() }
         case "rate":
             update { $0.rate = body["rate"] as? Double ?? $0.rate }
         case "error":

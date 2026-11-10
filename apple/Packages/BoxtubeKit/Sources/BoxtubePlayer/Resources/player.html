@@ -13,6 +13,7 @@ html,body{margin:0;padding:0;background:#000;width:100%;height:100%;overflow:hid
 <script>
 var player = null, ready = false, pending = null;
 var startMuted = false; // previews: always silent
+var ccOn = false, ccVideo = null;
 function post(m) { try { window.webkit.messageHandlers.bt.postMessage(m); } catch (e) {} }
 function onYouTubeIframeAPIReady() {
   player = new YT.Player('player', {
@@ -24,7 +25,11 @@ function onYouTubeIframeAPIReady() {
         if (startMuted) player.mute();
         if (pending) { load(pending.id, pending.start, pending.autoplay); pending = null; }
       },
-      onStateChange: function (e) { post({ type: 'state', state: e.data, duration: player.getDuration() || 0 }); },
+      onStateChange: function (e) {
+        post({ type: 'state', state: e.data, duration: player.getDuration() || 0 });
+        // Captions stay on from one video to the next.
+        if (e.data === 1 && ccOn) { var id = (player.getVideoData() || {}).video_id; if (id !== ccVideo) applyCaptions(); }
+      },
       onError: function (e) { post({ type: 'error', code: e.data }); },
       onPlaybackRateChange: function (e) { post({ type: 'rate', rate: e.data }); }
     }
@@ -56,8 +61,30 @@ function cmd(name, arg) {
     case 'mute': player.mute(); break;
     case 'unmute': player.unMute(); break;
     case 'volume': player.setVolume(arg); break;
-    case 'cc': if (arg) { player.loadModule('captions'); player.setOption('captions', 'track', {languageCode: 'en'}); } else { player.unloadModule('captions'); } break;
+    case 'cc': ccOn = !!arg; applyCaptions(); break;
   }
+}
+// Turns captions on with the video's own English track (made by people or auto-generated), or its first track.
+function applyCaptions() {
+  if (!ready || !player) return;
+  if (!ccOn) {
+    try { player.setOption('captions', 'track', {}); } catch (e) {}
+    try { player.unloadModule('captions'); } catch (e) {}
+    ccVideo = null;
+    return;
+  }
+  ccVideo = (player.getVideoData() || {}).video_id;
+  try { player.loadModule('captions'); } catch (e) {}
+  var tries = 0;
+  (function pick() {
+    var list = [];
+    try { list = player.getOption('captions', 'tracklist') || []; } catch (e) {}
+    if (!list.length && tries++ < 16) { setTimeout(pick, 250); return; }
+    var track = list.find(function (t) { return (t.languageCode || '').indexOf('en') === 0 && t.kind !== 'asr'; })
+      || list.find(function (t) { return (t.languageCode || '').indexOf('en') === 0; }) || list[0];
+    if (track) { player.setOption('captions', 'track', track); post({ type: 'cc', available: true }); }
+    else { post({ type: 'cc', available: false }); }
+  })();
 }
 var tag = document.createElement('script');
 tag.src = 'https://www.youtube.com/iframe_api';

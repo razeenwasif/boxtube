@@ -147,6 +147,16 @@ public final class Store: Sendable {
                 t.column("data", .blob).notNull()
             }
         }
+        m.registerMigration("v9-movies") { db in
+            // Movies you've bought, rented or saved for later on YouTube (added by hand; see Movies.swift).
+            try db.create(table: "movie") { t in
+                t.primaryKey("videoId", .text)
+                t.column("kind", .text).notNull()
+                t.column("addedAt", .datetime).notNull()
+                t.column("rentedAt", .datetime)
+                t.column("startedAt", .datetime)
+            }
+        }
         return m
     }
 

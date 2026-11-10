@@ -138,6 +138,17 @@ struct VideoPeek: View {
                             .background(.white.opacity(0.1), in: Capsule())
                     }
                     .accessibilityLabel(saved ? "Remove from Watch later" : "Save to Watch later")
+                    Button {
+                        // With nothing playing, queueing just plays it (after this card closes).
+                        if model.player.video == nil { dismiss(play: true) } else { model.addToQueue(v); dismiss(play: false) }
+                    } label: {
+                        Image(systemName: "text.badge.plus")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(BX.text)
+                            .frame(width: 40, height: 40)
+                            .background(.white.opacity(0.1), in: Circle())
+                    }
+                    .accessibilityLabel("Add to queue")
                 }
                 .buttonStyle(.plain)
                 .padding(.top, 4)
