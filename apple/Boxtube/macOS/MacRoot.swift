@@ -43,7 +43,7 @@ struct MacRoot: View {
                 EmptyView()
             }
             VStack(spacing: 0) {
-                if chrome != .music, !(chrome == .rail && model.showNotes) { topBar(chrome) }
+                if chrome != .music, !(chrome == .rail && model.showNotes), !model.videoFullScreen { topBar(chrome) }
                 NavigationStack(path: Binding(get: { model.paths[.home] ?? [] }, set: { model.paths[.home] = $0 })) {
                     detail
                         .navigationDestination(for: Route.self) {
@@ -88,6 +88,10 @@ struct MacRoot: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .boxtubeShowShortcuts)) { _ in withAnimation(.snappy) { showShortcuts.toggle() } }
         .onReceive(NotificationCenter.default.publisher(for: .boxtubeShowPalette)) { _ in showPalette = true }
+        // The window left full screen another way (green button, Mission Control): bring the page back.
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { _ in
+            if model.videoFullScreen { withAnimation(.snappy(duration: 0.3)) { model.videoFullScreen = false } }
+        }
         .observing(model.store, { db in try Q.subscriptions(db) }) { subs = $0 }
         .observing(model.store, { db in try WatchLaterEntry.fetchCount(db) }) { laterCount = $0 }
     }
@@ -95,7 +99,7 @@ struct MacRoot: View {
     enum Chrome: Equatable { case sidebar, hidden, rail, music }
 
     private var currentChrome: Chrome {
-        if model.watching != nil { return .rail }
+        if model.watching != nil { return model.videoFullScreen ? .hidden : .rail }
         if section == .music { return .music }
         return sidebarVisible ? .sidebar : .hidden
     }

@@ -24,6 +24,12 @@ struct MacWatchView: View {
     @State private var disliked: Set<String> = []
     @State private var scrolledY: CGFloat = 0
     @FocusState private var focused: Bool
+    /// The control bar hides itself while a video plays and the pointer is still.
+    @State private var barVisible = true
+    @State private var barHovered = false
+    @State private var hideTask: Task<Void, Never>?
+
+    enum PlayerMode { case standard, notes, theatre, fullScreen }
 
     private var tinted: Bool { model.tintFromVideo && model.palette != .standard }
     private var p: VideoPalette { tinted ? model.palette : .standard }
@@ -34,16 +40,27 @@ struct MacWatchView: View {
     var body: some View {
         let v = model.player.video ?? video
         Group {
-            if model.showNotes { notesLayout(v) } else { watchLayout(v) }
+            if model.videoFullScreen {
+                player(v, mode: .fullScreen)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(.black)
+            } else if model.showNotes {
+                notesLayout(v)
+            } else {
+                watchLayout(v)
+            }
         }
         .sheet(isPresented: $showSkim) { SkimView(video: v).frame(width: 760, height: 560) }
         .focusable()
         .focused($focused)
         .focusEffectDisabled()
         .onAppear { focused = true }
-        .onKeyPress(characters: .init(charactersIn: "jklcnsf,.?")) { press in handleKey(press.characters, chapters: v.chapters) }
+        .onKeyPress(characters: .init(charactersIn: "jklcnsft,.?")) { press in handleKey(press.characters, chapters: v.chapters) }
         // YouTube's keys: Space plays or pauses, the arrows move 5 seconds. Text fields keep their own keys.
         .onKeyPress(.space) { model.player.toggle(); return .handled }
+        .onKeyPress(.escape) { if model.videoFullScreen { model.setVideoFullScreen(false); return .handled }; return .ignored }
+        .onChange(of: model.player.isPlaying) { _, playing in if playing { pokeBar() } else { showBar() } }
+        .onDisappear { hideTask?.cancel(); if model.videoFullScreen { model.setVideoFullScreen(false) } }
         .onKeyPress(.leftArrow) { model.player.skip(-5); return .handled }
         .onKeyPress(.rightArrow) { model.player.skip(5); return .handled }
         .observing(model.store, id: v.channelId, { [cid = v.channelId] db in try Channel.fetchOne(db, key: cid) }) { channel = $0 }
@@ -67,16 +84,36 @@ struct MacWatchView: View {
         // One page that scrolls as a whole and starts right at the rail, so the video's glow
         // can spread and fade out instead of being cut at a column edge.
         ScrollView {
-            HStack(alignment: .top, spacing: 24) {
-                VStack(alignment: .leading, spacing: 16) {
-                    player(v, notesMode: false)
-                    Text(v.title).font(BX.display(24, .bold)).kerning(-0.48).lineSpacing(2).textSelection(.enabled)
-                    channelRow(v)
-                    descriptionCard(v)
+            if model.theatreMode {
+                // Theatre: the video takes the page's full width on a dark band; details and Up next sit below.
+                VStack(alignment: .leading, spacing: 20) {
+                    Color.black
+                        .containerRelativeFrame(.vertical) { height, _ in max(320, height * 0.74) }
+                        .frame(maxWidth: .infinity)
+                        .overlay { player(v, mode: .theatre) }
+                        .clipShape(.rect(cornerRadius: 18, style: .continuous))
+                    HStack(alignment: .top, spacing: 24) {
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text(v.title).font(BX.display(24, .bold)).kerning(-0.48).lineSpacing(2).textSelection(.enabled)
+                            channelRow(v)
+                            descriptionCard(v)
+                        }
+                        rightColumn(v).frame(width: 372)
+                    }
                 }
-                rightColumn(v).frame(width: 372)
+                .padding(.leading, 20).padding(.trailing, 24).padding(.top, 4).padding(.bottom, 24)
+            } else {
+                HStack(alignment: .top, spacing: 24) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        player(v, mode: .standard)
+                        Text(v.title).font(BX.display(24, .bold)).kerning(-0.48).lineSpacing(2).textSelection(.enabled)
+                        channelRow(v)
+                        descriptionCard(v)
+                    }
+                    rightColumn(v).frame(width: 372)
+                }
+                .padding(.leading, 20).padding(.trailing, 24).padding(.top, 4).padding(.bottom, 24)
             }
-            .padding(.leading, 20).padding(.trailing, 24).padding(.top, 4).padding(.bottom, 24)
         }
         .scrollIndicators(.hidden)
         .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, y in scrolledY = y }
@@ -93,7 +130,7 @@ struct MacWatchView: View {
     private func notesLayout(_ v: Video) -> some View {
         HStack(alignment: .top, spacing: 20) {
             VStack(alignment: .leading, spacing: 16) {
-                player(v, notesMode: true)
+                player(v, mode: .notes)
                 Text(v.title).font(BX.display(24, .bold)).kerning(-0.48).textSelection(.enabled)
                 HStack(spacing: 0) {
                     Text([v.channelTitle, Format.views(v.viewCount)].compactMap { $0 }.joined(separator: " · "))
@@ -114,17 +151,73 @@ struct MacWatchView: View {
 
     // MARK: Player
 
-    private func player(_ v: Video, notesMode: Bool) -> some View {
-        Color.clear
+    private func player(_ v: Video, mode: PlayerMode) -> some View {
+        let notesMode = mode == .notes
+        // The notes layout keeps its bar up (it carries the notes markers); elsewhere it hides when idle.
+        let shown = notesMode || barVisible
+        return Color.clear
             .aspectRatio(16 / 9, contentMode: .fit)
             .overlay { PlayerSurface(engine: model.player) }
-            .overlay(alignment: .topTrailing) { if !notesMode { addToPlaylist(v).padding(14) } }
-            .overlay(alignment: .bottom) {
-                MacPlayerBar(chapters: v.chapters, accent: p.accent, notes: notesMode ? notes : nil, showSkim: $showSkim)
-                    .padding(14)
+            .overlay(alignment: .topTrailing) {
+                if !notesMode { addToPlaylist(v).padding(14).opacity(shown ? 1 : 0).allowsHitTesting(shown) }
             }
-            .clipShape(.rect(cornerRadius: 18, style: .continuous))
-            .background { if tinted { ambientGlow } }
+            .overlay(alignment: .topLeading) {
+                if mode == .fullScreen {
+                    HStack(spacing: 12) {
+                        Button { model.setVideoFullScreen(false) } label: {
+                            Image(systemName: "chevron.left").font(.system(size: 15, weight: .bold))
+                                .frame(width: 36, height: 36)
+                                .background(Color(hex: 0x0C0C10, opacity: 0.5), in: Circle())
+                                .contentShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .help("Exit full screen (Esc)")
+                        .accessibilityLabel("Exit full screen")
+                        Text(v.title).font(.system(size: 16, weight: .semibold)).lineLimit(1)
+                            .shadow(color: .black.opacity(0.6), radius: 6)
+                    }
+                    .foregroundStyle(.white)
+                    .padding(18)
+                    .opacity(shown ? 1 : 0)
+                    .allowsHitTesting(shown)
+                }
+            }
+            .overlay(alignment: .bottom) {
+                MacPlayerBar(chapters: v.chapters, accent: p.accent, notes: notesMode ? notes : nil, showSkim: $showSkim,
+                             onHover: { inside in barHovered = inside; if inside { showBar() } else { pokeBar() } })
+                    .padding(mode == .fullScreen ? 24 : 14)
+                    .frame(maxWidth: mode == .fullScreen ? 1100 : .infinity)
+                    .opacity(shown ? 1 : 0)
+                    .offset(y: shown ? 0 : 8)
+                    .allowsHitTesting(shown)
+            }
+            .animation(.easeOut(duration: 0.25), value: shown)
+            .clipShape(.rect(cornerRadius: mode == .fullScreen || mode == .theatre ? 0 : 18, style: .continuous))
+            .background { if tinted, mode == .standard || mode == .notes { ambientGlow } }
+            .onContinuousHover { phase in
+                if case .active = phase { pokeBar() } else { hideSoon(after: 0.8) }
+            }
+    }
+
+    /// Shows the bar and hides it again after a still moment, if the video is playing.
+    private func pokeBar() {
+        if !barVisible { barVisible = true }
+        hideSoon(after: 2.5)
+    }
+
+    private func showBar() {
+        hideTask?.cancel()
+        if !barVisible { barVisible = true }
+    }
+
+    private func hideSoon(after seconds: Double) {
+        hideTask?.cancel()
+        hideTask = Task {
+            try? await Task.sleep(for: .seconds(seconds))
+            guard !Task.isCancelled, model.player.isPlaying, !barHovered else { return }
+            barVisible = false
+            if model.videoFullScreen { NSCursor.setHiddenUntilMouseMoves(true) }
+        }
     }
 
     /// Light from the video spilling onto the page: wide, soft, and cast downward, so it fades out
@@ -418,7 +511,8 @@ struct MacWatchView: View {
             withAnimation(.snappy) { model.showNotes = true }
             DispatchQueue.main.async { NotificationCenter.default.post(name: .boxtubeFocusNote, object: nil) }
         case "s": showSkim = true
-        case "f": NSApp.keyWindow?.toggleFullScreen(nil)
+        case "f": model.setVideoFullScreen(!model.videoFullScreen)
+        case "t": withAnimation(.snappy) { model.theatreMode.toggle() }
         case "?": NotificationCenter.default.post(name: .boxtubeShowShortcuts, object: nil)
         default: return .ignored
         }
@@ -457,6 +551,8 @@ struct MacPlayerBar: View {
     /// Non-nil on the notes layout: shows note markers and the "Press N" hint instead of the full controls.
     var notes: [Note]?
     @Binding var showSkim: Bool
+    /// Tells the page the pointer is over the bar, so it stays up.
+    var onHover: (Bool) -> Void = { _ in }
     @State private var hoverX: CGFloat?
     @State private var dragging = false
 
@@ -474,6 +570,7 @@ struct MacPlayerBar: View {
         .background(.ultraThinMaterial, in: .rect(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.white.opacity(0.12)))
         .environment(\.colorScheme, .dark)
+        .onHover(perform: onHover)
     }
 
     // MARK: Scrubber
@@ -567,9 +664,11 @@ struct MacPlayerBar: View {
         return HStack(spacing: 4) {
             icon(s.isPlaying ? "pause.fill" : "play.fill", s.isPlaying ? "Pause" : "Play", size: 18) { model.player.toggle() }
             icon("forward.end.fill", "Next video", size: 15) { model.advanceQueue() }
-            icon(model.player.muted ? "speaker.slash.fill" : "speaker.wave.2.fill", model.player.muted ? "Unmute" : "Mute", size: 15) {
+            icon(volumeIcon, model.player.muted ? "Unmute" : "Mute", size: 15) {
                 model.player.setMuted(!model.player.muted)
             }
+            VolumeSlider(value: model.player.muted ? 0 : model.player.volume) { model.setVolume($0) }
+                .frame(width: 78)
             Text("\(Format.clock(s.time)) \(Text("/ \(Format.clock(s.duration))").foregroundStyle(.white.opacity(0.6)))")
                 .font(.system(size: 12.5).monospacedDigit())
                 .padding(.leading, 6)
@@ -594,8 +693,21 @@ struct MacPlayerBar: View {
             .fixedSize()
             .accessibilityLabel("Playback speed")
             icon("pip.enter", "Picture in picture", size: 16) { openWindow(id: "floating") }
-            icon("arrow.up.left.and.arrow.down.right", "Full screen", size: 15) { NSApp.keyWindow?.toggleFullScreen(nil) }
+            if !model.videoFullScreen {
+                icon(model.theatreMode ? "rectangle.inset.filled" : "rectangle", model.theatreMode ? "Default view (T)" : "Theatre mode (T)", size: 16) {
+                    withAnimation(.snappy) { model.theatreMode.toggle() }
+                }
+            }
+            icon(model.videoFullScreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
+                 model.videoFullScreen ? "Exit full screen (F)" : "Full screen (F)", size: 15) {
+                model.setVideoFullScreen(!model.videoFullScreen)
+            }
         }
+    }
+
+    private var volumeIcon: String {
+        let v = model.player.muted ? 0 : model.player.volume
+        return v == 0 ? "speaker.slash.fill" : (v < 34 ? "speaker.wave.1.fill" : (v < 67 ? "speaker.wave.2.fill" : "speaker.wave.3.fill"))
     }
 
     private func notesControls(_ s: PlayerEngine.State, count: Int) -> some View {
@@ -898,5 +1010,49 @@ struct ShortcutHUD: View {
         }
         .padding(8)
         .boxGlass(.rect(cornerRadius: 16))
+    }
+}
+
+/// Volume, 0–100: drag or click along the track; scroll over it to nudge.
+struct VolumeSlider: View {
+    var value: Double
+    var set: (Double) -> Void
+
+    var body: some View {
+        GeometryReader { geo in
+            let w = max(geo.size.width, 1)
+            let x = w * CGFloat(value / 100)
+            ZStack(alignment: .leading) {
+                Capsule().fill(.white.opacity(0.25)).frame(height: 4)
+                Capsule().fill(.white).frame(width: x, height: 4)
+                Circle().fill(.white).frame(width: 12, height: 12).offset(x: x - 6)
+            }
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 0).onChanged { g in set(Double(min(max(0, g.location.x), w) / w) * 100) })
+        }
+        .frame(height: 28)
+        .accessibilityElement()
+        .accessibilityLabel("Volume")
+        .accessibilityValue("\(Int(value)) percent")
+        .accessibilityAdjustableAction { dir in set(value + (dir == .increment ? 10 : -10)) }
+        .help("Volume")
+    }
+}
+
+extension AppModel {
+    func setVolume(_ value: Double) {
+        player.setVolume(value)
+        UserDefaults.standard.set(player.volume, forKey: "volume")
+    }
+
+    /// Full screen shows just the video: the window goes full screen and the rail and top bar step aside.
+    func setVideoFullScreen(_ on: Bool) {
+        guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return }
+        if on { windowWasFullScreen = window.styleMask.contains(.fullScreen) }
+        withAnimation(.snappy(duration: 0.3)) { videoFullScreen = on }
+        // Leave the window as it was before, if it was already full screen.
+        let wantWindowFull = on || windowWasFullScreen
+        if window.styleMask.contains(.fullScreen) != wantWindowFull { window.toggleFullScreen(nil) }
     }
 }

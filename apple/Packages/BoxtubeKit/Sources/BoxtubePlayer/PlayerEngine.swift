@@ -127,6 +127,13 @@ public final class PlayerEngine: NSObject {
 
     public private(set) var muted = false
     public func setMuted(_ on: Bool) { muted = on; js(on ? "cmd('mute')" : "cmd('unmute')") }
+    /// 0–100. Kept across videos; raising it from 0 unmutes.
+    public private(set) var volume: Double = 100
+    public func setVolume(_ value: Double) {
+        volume = min(100, max(0, value.rounded()))
+        js("cmd('volume', \(Int(volume)))")
+        if muted, volume > 0 { setMuted(false) }
+    }
     /// For previews: whether videos loaded from now on start silent, applied to the current one too.
     public func setStartMuted(_ on: Bool) { muted = on; js("startMuted = \(on); cmd('\(on ? "mute" : "unmute")')") }
 
@@ -167,6 +174,7 @@ public final class PlayerEngine: NSObject {
         switch type {
         case "ready":
             update { $0.isReady = true }
+            if volume < 100 { js("cmd('volume', \(Int(volume)))") }
         case "time":
             let t = (body["time"] as? Double) ?? time
             let d = (body["duration"] as? Double) ?? 0

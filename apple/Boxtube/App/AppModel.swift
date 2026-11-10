@@ -81,6 +81,15 @@ final class AppModel {
     /// Opens a window scene by id; the main window registers it, so AppKit-hosted views (the menu bar panel) can use it.
     @ObservationIgnored var openWindowAction: ((String) -> Void)?
     #endif
+    #if os(macOS)
+    /// The Mac Watch page's video fills the screen (rail, top bar and details hidden).
+    var videoFullScreen = false
+    @ObservationIgnored var windowWasFullScreen = false
+    /// Theatre mode on the Mac Watch page: the video spans the page, remembered between launches.
+    var theatreMode = UserDefaults.standard.bool(forKey: "theatreMode") {
+        didSet { UserDefaults.standard.set(theatreMode, forKey: "theatreMode") }
+    }
+    #endif
     /// True while a long-press details card is up (iPhone), so the release doesn't also open the video.
     @ObservationIgnored var peekShowing = false
     /// Notes sync through iCloud (nil until started, or when the build has no iCloud container).
@@ -200,6 +209,7 @@ final class AppModel {
             Task { try? await self.store.recordProgress(videoId: video.id, position: state.time, duration: state.duration) }
             self.onPlaybackChanged?(video, state)
         }
+        if let volume = defaults.object(forKey: "volume") as? Double { player.setVolume(volume) }
         player.onCaptionsUnavailable = { [weak self] in
             self?.player.setCaptions(false)
             self?.flash("This video has no captions")
