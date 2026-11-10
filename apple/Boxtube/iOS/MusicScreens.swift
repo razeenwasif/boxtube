@@ -197,17 +197,22 @@ struct MusicPlayerScreen: View {
                     Text(model.player.video?.channelTitle ?? "").font(.system(size: 13.5, weight: .bold)).lineLimit(1)
                 }
                 Spacer()
-                Menu {
+                BXMenuButton(trailing: true) {
                     if let v = model.player.video {
-                        Button { model.toggleLike(v.id) } label: { Label(model.likedIds.contains(v.id) ? "Unlike" : "Like", systemImage: "heart") }
-                        Button { model.toggleWatchLater(v.id) } label: { Label("Save to Watch later", systemImage: "clock") }
-                        ShareLink(item: v.watchURL) { Label("Share", systemImage: "square.and.arrow.up") }
-                        Button { model.showMusicPlayer = false; model.mode = .videos; model.watching = v } label: { Label("Watch the music video", systemImage: "play.rectangle") }
+                        BXMenuSection {
+                            BXMenuItem(model.likedIds.contains(v.id) ? "Unlike" : "Like", icon: "heart", tint: BX.coralText) { model.toggleLike(v.id) }
+                            BXMenuItem(model.watchLaterIds.contains(v.id) ? "Remove from Watch later" : "Save to Watch later", icon: "clock", tint: BX.amber) { model.toggleWatchLater(v.id) }
+                            model.playlistSubmenu(v, title: "Add to playlist")
+                        }
+                        BXMenuSection {
+                            BXMenuItem.share(v.watchURL)
+                            BXMenuItem("Watch the music video", icon: "play.rectangle") { model.showMusicPlayer = false; model.mode = .videos; model.watching = v }
+                        }
                     }
                 } label: {
                     MoreDots(size: 20).frame(width: 40, height: 40).contentShape(Rectangle())
                 }
-                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
+                
                 .accessibilityLabel("More options")
             }
             .padding(.horizontal, 16)
@@ -330,19 +335,67 @@ struct MusicPlayerScreen: View {
             if ended, repeatOne { model.player.seek(to: 0); model.player.play() }
         }
         .sheet(isPresented: $showQueue) {
-            NavigationStack {
-                List {
-                    ForEach(model.player.queue) { v in
-                        Button { model.open(v, present: false) } label: { Text(v.title) }
-                    }
-                    .onDelete { model.player.queue.remove(atOffsets: $0) }
-                    .onMove { model.player.queue.move(fromOffsets: $0, toOffset: $1) }
-                }
-                .navigationTitle("Up next")
-                .toolbar { EditButton() }
-            }
-            .presentationDetents([.medium, .large])
+            MusicUpNextSheet().environment(model).bxMenuHost()
+                .presentationDetents([.medium, .large])
+                .presentationBackground(BX.surface)
         }
+    }
+}
+
+/// What plays after the current track: tap to play, ⋯ to move or remove.
+private struct MusicUpNextSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        let queue = model.player.queue
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("Up next").font(BX.display(24, .bold))
+                Spacer()
+                Button("Done") { dismiss() }.buttonStyle(.bx(.secondary, height: 34))
+            }
+            .padding(.horizontal, 20).padding(.top, 22).padding(.bottom, 10)
+            if queue.isEmpty {
+                Text("Nothing queued after this track.").font(.system(size: 14)).foregroundStyle(BX.muted).padding(.horizontal, 20)
+            }
+            ScrollView {
+                LazyVStack(spacing: 2) {
+                    ForEach(Array(queue.enumerated()), id: \.element.id) { i, v in
+                        HStack(spacing: 12) {
+                            Button { model.open(v, present: false) } label: {
+                                HStack(spacing: 12) {
+                                    VideoThumbnail(v, radius: 8, showDuration: false).frame(width: 72)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(v.title).font(.system(size: 14, weight: .semibold)).lineLimit(1)
+                                        Text(v.channelTitle).font(.system(size: 12)).foregroundStyle(BX.muted).lineLimit(1)
+                                    }
+                                    Spacer(minLength: 0)
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            BXMenuButton(trailing: true) {
+                                BXMenuSection {
+                                    BXMenuItem("Play now", icon: "play.fill") { model.open(v, present: false) }
+                                    if i > 0 { BXMenuItem("Move up", icon: "arrow.up") { model.player.queue.move(fromOffsets: [i], toOffset: i - 1) } }
+                                    if i < queue.count - 1 { BXMenuItem("Move down", icon: "arrow.down") { model.player.queue.move(fromOffsets: [i], toOffset: i + 2) } }
+                                }
+                                BXMenuSection {
+                                    BXMenuItem("Remove", icon: "minus.circle", destructive: true) { model.player.queue.remove(at: i) }
+                                }
+                            } label: {
+                                MoreDots(vertical: true, size: 16).foregroundStyle(BX.muted).frame(width: 30, height: 36).contentShape(Rectangle())
+                            }
+                            .accessibilityLabel("More for \(v.title)")
+                        }
+                        .padding(.horizontal, 16).padding(.vertical, 6)
+                    }
+                }
+            }
+        }
+        .foregroundStyle(BX.text)
+        .environment(\.colorScheme, .dark)
     }
 }
 
@@ -350,12 +403,11 @@ struct MusicPlayerScreen: View {
 
 struct MusicLibraryScreen: View {
     @Environment(AppModel.self) private var model
+    @Environment(BXMenuHost.self) private var host: BXMenuHost?
     @State private var filter = "Playlists"
     @State private var playlists: [PlaylistSummary] = []
     @State private var artists: [Q.SubscriptionRow] = []
     @State private var liked: [Video] = []
-    @State private var showNew = false
-    @State private var newTitle = ""
     @State private var musicVideos: [Video] = []
     @State private var recent = true
     @State private var grid = false
@@ -379,7 +431,11 @@ struct MusicLibraryScreen: View {
                     Spacer()
                     Button { withAnimation(.smooth) { model.showCommandPanel = true } } label: { IconView(.search, size: 21, lineWidth: 2).frame(width: 40, height: 40) }
                         .buttonStyle(.plain).accessibilityLabel("Search library")
-                    Button { showNew = true } label: { IconView(.plus, size: 22, lineWidth: 2).frame(width: 40, height: 40) }
+                    Button {
+                        host?.show(.prompt("New playlist", placeholder: "Name", confirm: "Create") { t in
+                            Task { await model.createPlaylist(title: t.isEmpty ? "New playlist" : t, music: true) }
+                        })
+                    } label: { IconView(.plus, size: 22, lineWidth: 2).frame(width: 40, height: 40) }
                         .buttonStyle(.plain).accessibilityLabel("New playlist")
                 }
                 .padding(.leading, 20).padding(.trailing, 12).frame(height: 48).padding(.top, 6)
@@ -445,11 +501,6 @@ struct MusicLibraryScreen: View {
             }
         }
         .islandClearance()
-        .alert("New playlist", isPresented: $showNew) {
-            TextField("Name", text: $newTitle)
-            Button("Create") { let t = newTitle; newTitle = ""; Task { await model.createPlaylist(title: t.isEmpty ? "New playlist" : t, music: true) } }
-            Button("Cancel", role: .cancel) {}
-        }
         .observing(model.store, { db in try Q.playlists(db, music: true) }) { playlists = $0 }
         .observing(model.store, { db in try Q.subscriptions(db, music: true) }) { artists = $0 }
         .observing(model.store, { db in try Q.liked(db, music: true) }) { liked = $0 }

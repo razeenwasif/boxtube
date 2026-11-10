@@ -64,7 +64,7 @@ struct WatchScreen: View {
             SkimView(video: v).environment(model).presentationDetents([.large])
         }
         .sheet(isPresented: $showNotes) {
-            NotesPanel(video: v).environment(model).presentationDetents([.medium, .large]).presentationBackground(BX.surface)
+            NotesPanel(video: v).environment(model).bxMenuHost().presentationDetents([.medium, .large]).presentationBackground(BX.surface)
         }
         .onAppear { current = model.player.video ?? video }
         .onChange(of: model.player.video?.id) { _, _ in if let pv = model.player.video { current = pv } }
@@ -253,8 +253,13 @@ struct WatchScreen: View {
                 .background(Color(hex: 0x1C1C20), in: Capsule())
                 ShareLink(item: v.watchURL) { PillLabel(title: "Share", icon: "square.and.arrow.up", active: false) }
                 Pill(saved ? "Saved" : "Save", icon: saved ? "clock.fill" : "clock", active: saved) { model.toggleWatchLater(v.id) }
-                Menu {
-                    ForEach(playlists) { p in Button(p.playlist.title) { model.add(v.id, to: p.playlist) } }
+                BXMenuButton {
+                    BXMenuSection("Add to playlist") {
+                        if playlists.isEmpty { BXMenuItem.note("No playlists yet", icon: "music.note.list", tint: BX.muted) }
+                        for p in playlists {
+                            BXMenuItem(p.playlist.title, icon: p.playlist.isMusic ? "music.note" : "list.bullet") { model.add(v.id, to: p.playlist) }
+                        }
+                    }
                 } label: { PillLabel(title: "Playlist", icon: "text.badge.plus", active: false) }
                 Pill("Note", icon: "note.text.badge.plus", active: false) { showNotes = true }
                 Pill("Skim", icon: "square.grid.2x2", active: false) { model.showSkim = true }

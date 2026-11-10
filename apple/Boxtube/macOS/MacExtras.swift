@@ -55,13 +55,15 @@ struct FloatingPlayerWindow: View {
                     Button { model.player.toggle() } label: { Image(systemName: model.player.isPlaying ? "pause.fill" : "play.fill").font(.system(size: 18)) }
                     Button { model.player.skip(10) } label: { Image(systemName: "goforward.10") }
                     Spacer()
-                    Menu {
-                        Button("Top left") { snap(.topLeading) }
-                        Button("Top right") { snap(.topTrailing) }
-                        Button("Bottom left") { snap(.bottomLeading) }
-                        Button("Bottom right") { snap(.bottomTrailing) }
+                    BXMenuButton(trailing: true) {
+                        BXMenuSection("Snap to") {
+                            BXMenuItem("Top left", icon: "rectangle.inset.topleft.filled") { snap(.topLeading) }
+                            BXMenuItem("Top right", icon: "rectangle.inset.topright.filled") { snap(.topTrailing) }
+                            BXMenuItem("Bottom left", icon: "rectangle.inset.bottomleft.filled") { snap(.bottomLeading) }
+                            BXMenuItem("Bottom right", icon: "rectangle.inset.bottomright.filled") { snap(.bottomTrailing) }
+                        }
                     } label: { Image(systemName: "rectangle.inset.bottomright.filled") }
-                    .menuStyle(.button).menuIndicator(.hidden).fixedSize()
+                    .fixedSize()
                     .help("Snap to a corner")
                 }
                 .buttonStyle(.plain)
@@ -126,6 +128,7 @@ struct MenuBarPlayer: View {
             } else {
                 Text("Nothing playing").font(.system(size: 13, weight: .semibold))
                 Button("Start a time box") { model.showTimeBox = true; openWindow(id: "main") }
+                    .buttonStyle(.bx(.primary, height: 30))
             }
             Divider()
             HStack {
@@ -144,41 +147,14 @@ struct MenuBarPlayer: View {
 // MARK: - Settings
 
 struct MacSettings: View {
-    @Environment(AppModel.self) private var model
     var body: some View {
-        @Bindable var model = model
-        Form {
-            TextField("Your name", text: $model.displayName)
-            Toggle("Calm mode", isOn: $model.calmMode)
-            Toggle("Tint the window from the video", isOn: $model.tintFromVideo)
-            Picker("Preview videos on hover", selection: $model.previewMode) {
-                ForEach(PreviewMode.allCases) { Text($0.title).tag($0) }
-            }
-            Picker("Watch later clears after", selection: $model.clearAfterWeeks) {
-                ForEach([1, 2, 4, 8], id: \.self) { Text("\($0) week\($0 == 1 ? "" : "s")").tag($0) }
-            }
-            Toggle(isOn: $model.discoverChannels) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Recommend from channels you don't follow")
-                    if !model.recommendationStats.isEmpty {
-                        Text(model.recommendationStats).font(.system(size: 11)).foregroundStyle(BX.muted)
-                    }
-                }
-            }
-            LabeledContent("YouTube API key", value: model.hasAPIKey ? "Added" : "Missing (apple/Config/Secrets.xcconfig)")
-            Section {
-                GoogleAccountSection()
-            } header: { Text("YouTube account") } footer: {
-                Text(model.syncEnabled
-                         ? "Likes, subscriptions, playlist edits and new playlists go to YouTube; each change uses 50 of your 10,000 daily quota units. Deleting a playlist only removes it from Boxtube."
-                         : "Boxtube copies your subscriptions, playlists and liked videos. Turn on sync to send changes you make here back to YouTube.")
-            }
-            HiddenVideosRow()
-            Button("Clear watch history", role: .destructive) { Task { try? await model.store.clearHistory() } }
+        ScrollView {
+            SettingsContent().padding(24)
         }
-        .formStyle(.grouped)
-        .frame(width: 460)
-        .padding()
+        .scrollIndicators(.automatic)
+        .frame(width: 520, height: 680)
+        .background(BX.ground)
+        .foregroundStyle(BX.text)
     }
 }
 
@@ -386,7 +362,11 @@ struct MacMusic: View {
                         .padding(.vertical, 6)
                         .contentShape(Rectangle())
                         .onTapGesture(count: 2) { play(Array(tracks[i...])) }
-                        .contextMenu { Button("Play") { play(Array(tracks[i...])) }; Button("Like") { model.toggleLike(t.id) } }
+                        .bxContextMenu {
+                            BXMenuItem("Play from here", icon: "play.fill") { play(Array(tracks[i...])) }
+                            BXMenuItem(model.likedIds.contains(t.id) ? "Unlike" : "Like", icon: "heart") { model.toggleLike(t.id) }
+                            BXMenuItem("Add to queue", icon: "text.badge.plus") { model.addToQueue(t) }
+                        }
                     }
                 }
                 .padding(.horizontal, 28).padding(.bottom, 28)

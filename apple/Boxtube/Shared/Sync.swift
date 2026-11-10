@@ -200,38 +200,58 @@ extension View {
 
 private struct PlaylistDeleteDialog: ViewModifier {
     @Environment(AppModel.self) private var model
+    @Environment(BXMenuHost.self) private var host: BXMenuHost?
     @Binding var playlist: Playlist?
 
     func body(content: Content) -> some View {
-        content.confirmationDialog(
-            playlist.map { "Delete “\($0.title)”?" } ?? "",
-            isPresented: Binding(get: { playlist != nil }, set: { if !$0 { playlist = nil } }),
-            titleVisibility: .visible,
-            presenting: playlist
-        ) { p in
-            if Store.isLocalPlaylist(p.id) {
-                Button("Delete", role: .destructive) { model.deletePlaylist(p, onYouTube: false) }
-            } else if model.syncEnabled {
-                Button("Delete on YouTube too", role: .destructive) { model.deletePlaylist(p, onYouTube: true) }
-                Button("Remove from Boxtube only") { model.deletePlaylist(p, onYouTube: false) }
-            } else {
-                Button("Remove from Boxtube", role: .destructive) { model.deletePlaylist(p, onYouTube: false) }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: { p in
-            if Store.isLocalPlaylist(p.id) {
-                Text("This playlist is only in Boxtube.")
-            } else if model.syncEnabled {
-                Text("Deleting on YouTube can't be undone. Removing it from Boxtube only leaves it on YouTube; Settings can bring it back.")
-            } else {
-                Text("It stays on YouTube. Settings can bring it back.")
-            }
+        content.onChange(of: playlist?.id) { _, id in
+            guard id != nil, let p = playlist else { return }
+            host?.show(dialog(for: p))
+        }
+    }
+
+    private func dialog(for p: Playlist) -> BXDialog {
+        let done: @MainActor () -> Void = { playlist = nil }
+        let delete: (Bool) -> BXDialog.Action = { onYouTube in
+            .init(title: "", kind: .destructive) { _ in model.deletePlaylist(p, onYouTube: onYouTube); playlist = nil }
+        }
+        if Store.isLocalPlaylist(p.id) {
+            var d = delete(false); d.title = "Delete"
+            return .confirm("Delete “\(p.title)”?", message: "This playlist is only in Boxtube.", actions: [d], cancel: done)
+        } else if model.syncEnabled {
+            var d = delete(true); d.title = "Delete on YouTube too"
+            var r = delete(false); r.title = "Remove from Boxtube only"; r.kind = .secondary
+            return .confirm("Delete “\(p.title)”?",
+                            message: "Deleting on YouTube can't be undone. Removing it from Boxtube only leaves it on YouTube; Settings can bring it back.",
+                            actions: [d, r], cancel: done)
+        } else {
+            var d = delete(false); d.title = "Remove from Boxtube"
+            return .confirm("Delete “\(p.title)”?", message: "It stays on YouTube. Settings can bring it back.", actions: [d], cancel: done)
         }
     }
 }
 
-/// The actions for one playlist, shared by its ⋯ menu and its right-click / long-press menu.
-struct PlaylistActions: View {
+extension AppModel {
+    /// The actions for one playlist, shared by its ⋯ menu and its right-click / long-press menu.
+    @BXMenuBuilder
+    func playlistMenu(_ summary: PlaylistSummary, publishing: Bool, toDelete: Binding<Playlist?>, toPublish: Binding<PlaylistSummary?>) -> [BXMenuSection] {
+        let p = summary.playlist
+        BXMenuSection {
+            BXMenuItem(p.isMusic ? "Remove from Music" : "Show in Music", icon: p.isMusic ? "music.note.slash" : "music.note", tint: Color(hex: 0xB3A1FF)) {
+                Task { try? await self.store.setPlaylistMusic(p.id, !p.isMusic) }
+            }
+            if syncEnabled, Store.isLocalPlaylist(p.id), !publishing {
+                BXMenuItem("Publish to YouTube…", icon: "arrow.up.circle") { toPublish.wrappedValue = summary }
+            }
+        }
+        BXMenuSection {
+            BXMenuItem("Delete…", icon: "trash", destructive: true) { toDelete.wrappedValue = p }
+        }
+    }
+}
+
+/// The ⋯ button on a playlist card.
+struct PlaylistMoreButton: View {
     @Environment(AppModel.self) private var model
     var summary: PlaylistSummary
     var publishing: Bool
@@ -239,37 +259,14 @@ struct PlaylistActions: View {
     @Binding var toPublish: PlaylistSummary?
 
     var body: some View {
-        let p = summary.playlist
-        Button { Task { try? await model.store.setPlaylistMusic(p.id, !p.isMusic) } } label: {
-            Label(p.isMusic ? "Remove from Music" : "Show in Music", systemImage: p.isMusic ? "music.note.slash" : "music.note")
-        }
-        if model.syncEnabled, Store.isLocalPlaylist(p.id), !publishing {
-            Button { toPublish = summary } label: { Label("Publish to YouTube…", systemImage: "arrow.up.circle") }
-        }
-        Divider()
-        Button(role: .destructive) { toDelete = p } label: { Label("Delete…", systemImage: "trash") }
-    }
-}
-
-/// The ⋯ button on a playlist card.
-struct PlaylistMoreButton: View {
-    var summary: PlaylistSummary
-    var publishing: Bool
-    @Binding var toDelete: Playlist?
-    @Binding var toPublish: PlaylistSummary?
-
-    var body: some View {
-        Menu {
-            PlaylistActions(summary: summary, publishing: publishing, toDelete: $toDelete, toPublish: $toPublish)
+        BXMenuButton(trailing: true) {
+            model.playlistMenu(summary, publishing: publishing, toDelete: $toDelete, toPublish: $toPublish)
         } label: {
             MoreDots(size: 16)
                 .foregroundStyle(BX.muted)
                 .frame(width: 30, height: 30)
                 .contentShape(Rectangle())
         }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
         .fixedSize()
         .accessibilityLabel("More for \(summary.playlist.title)")
         #if os(macOS)
@@ -285,20 +282,17 @@ extension View {
 
 private struct PlaylistPublishDialog: ViewModifier {
     @Environment(AppModel.self) private var model
+    @Environment(BXMenuHost.self) private var host: BXMenuHost?
     @Binding var summary: PlaylistSummary?
 
     func body(content: Content) -> some View {
-        content.confirmationDialog(
-            summary.map { "Publish “\($0.playlist.title)” to YouTube?" } ?? "",
-            isPresented: Binding(get: { summary != nil }, set: { if !$0 { summary = nil } }),
-            titleVisibility: .visible,
-            presenting: summary
-        ) { s in
-            Button("Publish") { model.publishPlaylist(s.playlist) }
-            Button("Cancel", role: .cancel) {}
-        } message: { s in
+        content.onChange(of: summary?.id) { _, id in
+            guard id != nil, let s = summary else { return }
             let units = 50 * (1 + s.count)
-            Text("Creates a private playlist on your channel and adds \(s.count) video\(s.count == 1 ? "" : "s"). Uses about \(units.formatted()) of your 10,000 daily quota units\(units > 10_000 - model.quotaToday ? "; the rest continues tomorrow" : "").")
+            let message = "Creates a private playlist on your channel and adds \(s.count) video\(s.count == 1 ? "" : "s"). Uses about \(units.formatted()) of your 10,000 daily quota units\(units > 10_000 - model.quotaToday ? "; the rest continues tomorrow" : "")."
+            host?.show(.confirm("Publish “\(s.playlist.title)” to YouTube?", message: message,
+                                actions: [.init(title: "Publish", kind: .primary) { _ in model.publishPlaylist(s.playlist); summary = nil }],
+                                cancel: { summary = nil }))
         }
     }
 }

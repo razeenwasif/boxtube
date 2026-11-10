@@ -275,7 +275,7 @@ struct SubscriptionsScreen: View {
         }
         .islandClearance()
         .refreshable { await model.refresh(force: true) }
-        .sheet(isPresented: $showManage) { ManageSubscriptionsSheet().environment(model) }
+        .sheet(isPresented: $showManage) { ManageSubscriptionsSheet().environment(model).bxMenuHost() }
         .observing(model.store, { db in try Q.subscriptions(db) }) { subs = $0 }
         .observing(model.store, { db in try Q.feed(db, music: false, limit: 120) + Q.feed(db, music: true, limit: 30) }) { list in
             feed = list.sorted { $0.publishedAt > $1.publishedAt }
@@ -315,9 +315,9 @@ struct SubscriptionsScreen: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(row.channel.title + (row.isLive ? ", live" : (row.newCount > 0 ? ", new videos" : "")))
-        .contextMenu {
-            Button { model.push(.channel(row.channel.id)) } label: { Label("Open channel", systemImage: "person.crop.square") }
-            Button(role: .destructive) { model.unsubscribe(row.channel.id) } label: { Label("Unsubscribe", systemImage: "minus.circle") }
+        .bxContextMenu {
+            BXMenuItem("Open channel", icon: "person.crop.square") { model.push(.channel(row.channel.id)) }
+            BXMenuItem("Unsubscribe", icon: "minus.circle", destructive: true) { model.unsubscribe(row.channel.id) }
         }
     }
 
@@ -364,22 +364,21 @@ struct CircleIconButtonView<Icon: View>: View {
 
 struct PlaylistsScreen: View {
     @Environment(AppModel.self) private var model
+    @Environment(BXMenuHost.self) private var host: BXMenuHost?
     @State private var playlists: [PlaylistSummary] = []
     @State private var laterCount = 0
     @State private var likedCount = 0
     @State private var historyCount = 0
-    @State private var showNew = false
     @State private var toDelete: Playlist?
     @State private var toPublish: PlaylistSummary?
     @State private var publishing: Set<String> = []
-    @State private var newTitle = ""
     @State private var sortRecent = true
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 ScreenHeader("Playlists") {
-                    CircleIconButtonView(label: "New playlist", fill: BX.coral, tint: BX.coralInk) { IconView(.plus, size: 20, lineWidth: 2.4) } action: { showNew = true }
+                    CircleIconButtonView(label: "New playlist", fill: BX.coral, tint: BX.coralInk) { IconView(.plus, size: 20, lineWidth: 2.4) } action: { newPlaylist() }
                 }
                 HStack(spacing: 10) {
                     tile("Watch later", "\(laterCount) videos", icon: .clock, tint: BX.amber) { model.push(.watchLater) }
@@ -409,7 +408,7 @@ struct PlaylistsScreen: View {
                     ForEach(sorted) { p in
                         Button { model.push(.playlist(p.playlist.id)) } label: { StackedCover(summary: p) }
                             .buttonStyle(.plain)
-                            .contextMenu { PlaylistActions(summary: p, publishing: publishing.contains(p.id), toDelete: $toDelete, toPublish: $toPublish) }
+                            .bxContextMenu { model.playlistMenu(p, publishing: publishing.contains(p.id), toDelete: $toDelete, toPublish: $toPublish) }
                             .overlay(alignment: .bottomTrailing) {
                                 PlaylistMoreButton(summary: p, publishing: publishing.contains(p.id), toDelete: $toDelete, toPublish: $toPublish)
                                     .offset(x: 6, y: 2)
@@ -423,15 +422,16 @@ struct PlaylistsScreen: View {
         .playlistDeleteDialog($toDelete)
         .playlistPublishDialog($toPublish)
         .observing(model.store, { db in try Q.publishingPlaylists(db) }) { publishing = $0 }
-        .alert("New playlist", isPresented: $showNew) {
-            TextField("Name", text: $newTitle)
-            Button("Create") { let t = newTitle; newTitle = ""; Task { await model.createPlaylist(title: t.isEmpty ? "New playlist" : t, music: model.mode == .music) } }
-            Button("Cancel", role: .cancel) {}
-        }
         .observing(model.store, { db in try Q.playlists(db) }) { playlists = $0 }
         .observing(model.store, { db in (try WatchLaterEntry.fetchCount(db), try LikedVideo.fetchCount(db), try HistoryEntry.fetchCount(db)) }) {
             laterCount = $0.0; likedCount = $0.1; historyCount = $0.2
         }
+    }
+
+    private func newPlaylist() {
+        host?.show(.prompt("New playlist", placeholder: "Name", confirm: "Create") { t in
+            Task { await model.createPlaylist(title: t.isEmpty ? "New playlist" : t, music: model.mode == .music) }
+        })
     }
 
     private var sorted: [PlaylistSummary] {
@@ -493,10 +493,10 @@ struct StackedCover: View {
 
 struct ProfileScreen: View {
     @Environment(AppModel.self) private var model
+    @Environment(BXMenuHost.self) private var host: BXMenuHost?
     @State private var stats: Q.Stats?
     @State private var history: [HistoryRow] = []
     @State private var showSettings = false
-    @State private var editingName = false
 
     var body: some View {
         ScrollView {
@@ -516,7 +516,11 @@ struct ProfileScreen: View {
                             .padding(.top, 4)
                     }
                     HStack(spacing: 8) {
-                        pill("Edit profile") { editingName = true }
+                        pill("Edit profile") {
+                            host?.show(.prompt("Your name", placeholder: "Name", initial: model.displayName, confirm: "Save") { name in
+                                if !name.isEmpty { model.displayName = name }
+                            })
+                        }
                         pill("Settings") { showSettings = true }
                     }
                     .padding(.top, 14)
@@ -592,11 +596,7 @@ struct ProfileScreen: View {
                 .padding(.trailing, 16).padding(.top, 2)
         }
         .islandClearance()
-        .sheet(isPresented: $showSettings) { SettingsSheet().environment(model) }
-        .alert("Your name", isPresented: $editingName) {
-            TextField("Name", text: Binding(get: { model.displayName }, set: { model.displayName = $0 }))
-            Button("Done") {}
-        }
+        .sheet(isPresented: $showSettings) { SettingsSheet().environment(model).bxMenuHost() }
         .observing(model.store, { db in try Q.stats(db) }) { stats = $0 }
         .observing(model.store, { db in try Q.history(db, limit: 8) }) { history = $0 }
     }

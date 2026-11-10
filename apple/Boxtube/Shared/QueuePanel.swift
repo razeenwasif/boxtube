@@ -89,25 +89,29 @@ struct QueuePanel: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Play \(v.title) now")
-            Menu {
-                Button { model.playFromQueue(v) } label: { Label("Play now", systemImage: "play") }
-                Section {
+            BXMenuButton(trailing: true) {
+                BXMenuSection {
+                    BXMenuItem("Play now", icon: "play.fill") { model.playFromQueue(v) }
+                }
+                BXMenuSection {
                     if index > 0 {
-                        Button { model.moveInQueue(v.id, to: 0) } label: { Label("Move to top", systemImage: "arrow.up.to.line") }
-                        Button { model.moveInQueue(v.id, to: index - 1) } label: { Label("Move up", systemImage: "arrow.up") }
+                        BXMenuItem("Move to top", icon: "arrow.up.to.line") { model.moveInQueue(v.id, to: 0) }
+                        BXMenuItem("Move up", icon: "arrow.up") { model.moveInQueue(v.id, to: index - 1) }
                     }
                     if index < count - 1 {
-                        Button { model.moveInQueue(v.id, to: index + 1) } label: { Label("Move down", systemImage: "arrow.down") }
+                        BXMenuItem("Move down", icon: "arrow.down") { model.moveInQueue(v.id, to: index + 1) }
                     }
                 }
-                Button(role: .destructive) { model.removeFromQueue(v) } label: { Label("Remove from queue", systemImage: "minus.circle") }
+                BXMenuSection {
+                    BXMenuItem("Remove from queue", icon: "minus.circle", destructive: true) { model.removeFromQueue(v) }
+                }
             } label: {
                 MoreDots(vertical: true, size: 14)
                     .foregroundStyle(muted)
                     .frame(width: 26, height: 30)
                     .contentShape(Rectangle())
             }
-            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+            .fixedSize()
             .accessibilityLabel("Queue options for \(v.title)")
             Button { model.removeFromQueue(v) } label: {
                 Image(systemName: "xmark")

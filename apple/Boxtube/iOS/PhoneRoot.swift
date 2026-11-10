@@ -30,10 +30,10 @@ struct PhoneRoot: View {
         .background(model.calmMode && model.tab == .home ? BX.calmGround : BX.ground)
         .onChange(of: model.tab) { _, tab in visited.insert(tab) }
         .fullScreenCover(item: $model.watching) { video in
-            WatchScreen(video: video).environment(model)
+            WatchScreen(video: video).environment(model).bxMenuHost()
         }
         .fullScreenCover(isPresented: $model.showMusicPlayer) {
-            MusicPlayerScreen().environment(model)
+            MusicPlayerScreen().environment(model).bxMenuHost()
         }
         .sheet(isPresented: $model.showTimeBox) {
             TimeBoxView().environment(model).presentationDragIndicator(.visible)

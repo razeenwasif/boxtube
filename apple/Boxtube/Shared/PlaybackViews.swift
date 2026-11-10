@@ -115,19 +115,15 @@ struct PlayerControlBar: View {
                 }
                 Spacer(minLength: 4)
                 if let extra { extra }
-                Menu {
-                    ForEach([0.75, 1, 1.25, 1.5, 2], id: \.self) { r in
-                        Button { model.player.setRate(r) } label: {
-                            if r == s.rate { Label("\(r.formatted())×", systemImage: "checkmark") } else { Text("\(r.formatted())×") }
-                        }
+                BXMenuButton(trailing: true) {
+                    BXMenuSection("Speed") {
+                        for r in [0.75, 1, 1.25, 1.5, 2] { BXMenuItem("\(r.formatted())×", checked: r == s.rate) { model.player.setRate(r) } }
                     }
                 } label: {
                     Text("\(s.rate.formatted())×").font(.system(size: 12, weight: .bold))
                         .padding(.horizontal, 8).frame(height: 26)
                         .background(.white.opacity(0.14), in: .rect(cornerRadius: 7))
                 }
-                .menuStyle(.button)
-                .buttonStyle(.plain)
                 .accessibilityLabel("Playback speed")
             }
             .buttonStyle(.plain)
@@ -243,8 +239,9 @@ struct NotesPanel: View {
                             Text(n.text).font(.system(size: 13.5)).foregroundStyle(BX.text2).textSelection(.enabled)
                             Spacer(minLength: 0)
                         }
-                        .contextMenu {
-                            Button(role: .destructive) { model.deleteNote(n) } label: { Label("Delete note", systemImage: "trash") }
+                        .bxContextMenu {
+                            BXMenuItem("Jump to \(Format.clock(n.time))", icon: "arrow.uturn.forward") { model.player.seek(to: n.time) }
+                            BXMenuItem("Delete note", icon: "trash", destructive: true) { model.deleteNote(n) }
                         }
                     }
                 }

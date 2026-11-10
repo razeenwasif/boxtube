@@ -227,7 +227,9 @@ struct CalmHomeScreen: View {
                         HStack(spacing: 8) {
                             Image(systemName: "leaf.fill")
                             Text("Calm").font(.system(size: 13, weight: .bold))
-                            Toggle("", isOn: .constant(true)).labelsHidden().tint(BX.sage).allowsHitTesting(false).scaleEffect(0.75)
+                            Capsule().fill(BX.sage).frame(width: 34, height: 22)
+                                .overlay(alignment: .trailing) { Circle().fill(Color(hex: 0x101410)).frame(width: 18, height: 18).padding(2) }
+                                .accessibilityHidden(true).scaleEffect(0.75)
                         }
                         .foregroundStyle(BX.sageText)
                         .padding(.leading, 12).frame(height: 36)

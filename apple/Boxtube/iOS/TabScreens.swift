@@ -14,40 +14,54 @@ struct ManageSubscriptionsSheet: View {
     @State private var error: String?
 
     var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    HStack {
-                        TextField(model.hasAPIKey ? "Search channels, or paste a channel URL / ID" : "Paste a channel URL or ID (UC…)", text: $query)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack {
+                    Text("Subscriptions").font(BX.display(30, .bold)).kerning(-0.6)
+                    Spacer()
+                    Button("Done") { dismiss() }.buttonStyle(.bx(.secondary, height: 34))
+                }
+                .padding(.top, 8)
+                BXCard("Add a channel", footer: error) {
+                    HStack(spacing: 10) {
+                        BXTextField(placeholder: model.hasAPIKey ? "Search, or paste a channel URL" : "Paste a channel URL or ID (UC…)", text: $query, onSubmit: find)
                             .textInputAutocapitalization(.never).autocorrectionDisabled()
-                            .onSubmit(find)
-                        Button("Add", action: find).disabled(query.isEmpty)
+                        Button("Add", action: find).buttonStyle(.bx(.primary, height: 40)).disabled(query.isEmpty)
                     }
-                    if let error { Text(error).font(.footnote).foregroundStyle(BX.coralText) }
                     ForEach(results) { c in
-                        HStack {
-                            ChannelAvatar(title: c.title, url: c.avatarURL, size: 32)
-                            Text(c.title)
+                        HStack(spacing: 12) {
+                            ChannelAvatar(title: c.title, url: c.avatarURL, size: 34)
+                            Text(c.title).font(.system(size: 14.5, weight: .semibold)).lineLimit(1)
                             Spacer()
-                            Button("Subscribe") { model.subscribe(c); results.removeAll { $0.id == c.id } }.buttonStyle(.borderedProminent).tint(BX.coral)
+                            Button("Subscribe") { model.subscribe(c); results.removeAll { $0.id == c.id } }.buttonStyle(.bx(.light, height: 32))
                         }
                     }
-                } header: { Text("Add a channel") }
-                Section {
+                }
+                BXCard("\(subs.count) subscriptions") {
                     ForEach(subs) { row in
-                        HStack {
-                            ChannelAvatar(title: row.channel.title, url: row.channel.avatarURL, size: 32)
-                            Text(row.channel.title)
+                        HStack(spacing: 12) {
+                            ChannelAvatar(title: row.channel.title, url: row.channel.avatarURL, size: 34)
+                            Text(row.channel.title).font(.system(size: 14.5, weight: .medium)).lineLimit(1)
+                            if row.channel.isMusic { Image(systemName: "music.note").font(.system(size: 12)).foregroundStyle(BX.muted) }
                             Spacer()
-                            if row.channel.isMusic { Image(systemName: "music.note").foregroundStyle(BX.muted) }
+                            BXMenuButton(trailing: true) {
+                                BXMenuItem("Open channel", icon: "person.crop.square") { dismiss(); model.push(.channel(row.channel.id)) }
+                                BXMenuItem("Unsubscribe", icon: "minus.circle", destructive: true) { model.unsubscribe(row.channel.id) }
+                            } label: {
+                                MoreDots(vertical: true, size: 16).foregroundStyle(BX.muted).frame(width: 30, height: 34).contentShape(Rectangle())
+                            }
+                            .accessibilityLabel("More for \(row.channel.title)")
                         }
                     }
-                    .onDelete { idx in for i in idx { model.unsubscribe(subs[i].channel.id) } }
-                } header: { Text("\(subs.count) subscriptions") }
+                }
             }
-            .navigationTitle("Subscriptions")
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 40)
         }
+        .scrollDismissesKeyboard(.immediately)
+        .background(BX.ground)
+        .presentationBackground(BX.ground)
+        .presentationDragIndicator(.visible)
+        .foregroundStyle(BX.text)
         .observing(model.store, { db in try Q.subscriptions(db) }) { subs = $0 }
     }
 
@@ -105,7 +119,7 @@ struct PlaylistDetailScreen: View {
                     Toggle(isOn: Binding(get: { playlist.isMusic }, set: { on in Task { try? await model.store.setPlaylistMusic(playlistId, on) } })) {
                         Label("Show in Music", systemImage: "music.note").font(.system(size: 15, weight: .semibold))
                     }
-                    .tint(BX.coral)
+                    .toggleStyle(.bx)
                     .padding(.horizontal, 14).frame(height: 48)
                     .background(BX.surface, in: .rect(cornerRadius: 14))
                     PublishPlaylistButton(playlist: playlist, videoCount: videos.count)
@@ -139,15 +153,8 @@ struct WatchLaterScreen: View {
                 HStack {
                     BackButton()
                     Spacer()
-                    Menu {
-                        Picker("Clear after", selection: Binding(get: { model.clearAfterWeeks }, set: { model.clearAfterWeeks = $0 })) {
-                            ForEach([1, 2, 4, 8], id: \.self) { Text("\($0) week\($0 == 1 ? "" : "s")").tag($0) }
-                        }
-                    } label: {
-                        Label("Clears after \(weeks) weeks", systemImage: "clock").font(.system(size: 12.5, weight: .semibold))
-                            .padding(.horizontal, 12).frame(height: 34).background(BX.surface2, in: Capsule())
-                    }
-                    .buttonStyle(.plain)
+                    BXPicker(options: [1, 2, 4, 8], selection: Binding(get: { model.clearAfterWeeks }, set: { model.clearAfterWeeks = $0 }),
+                             title: { "\($0) week\($0 == 1 ? "" : "s")" }, icon: "clock", label: { "Clears after \($0) week\($0 == 1 ? "" : "s")" })
                 }
                 .padding(.horizontal, 10)
                 LargeTitle("Watch later").padding(.horizontal, 20).padding(.top, 6)
@@ -205,9 +212,14 @@ struct WatchLaterScreen: View {
                             .opacity(r.entry.pinned ? 1 : 0.5 + life / 2)
                         }
                         .buttonStyle(.plain)
-                        .contextMenu {
-                            Button { Task { try? await model.store.setPinned(r.video.id, pinned: !r.entry.pinned) } } label: { Label(r.entry.pinned ? "Unpin" : "Pin (never clears)", systemImage: "pin") }
-                            Button(role: .destructive) { model.toggleWatchLater(r.video.id) } label: { Label("Remove", systemImage: "trash") }
+                        .bxContextMenu {
+                            BXMenuSection {
+                                BXMenuItem(r.entry.pinned ? "Unpin" : "Pin (never clears)", icon: r.entry.pinned ? "pin.slash" : "pin", tint: BX.amber) { Task { try? await model.store.setPinned(r.video.id, pinned: !r.entry.pinned) } }
+                                BXMenuItem("Play next", icon: "text.line.first.and.arrowtriangle.forward") { model.playNext(r.video) }
+                            }
+                            BXMenuSection {
+                                BXMenuItem("Remove from Watch later", icon: "trash", destructive: true) { model.toggleWatchLater(r.video.id) }
+                            }
                         }
                     }
                 }
@@ -299,7 +311,7 @@ struct ChannelScreen: View {
                                 Text("Appears under Artists instead of your Videos feed").font(.system(size: 12)).foregroundStyle(BX.muted)
                             }
                         }
-                        .tint(BX.coral)
+                        .toggleStyle(.bx)
                         .padding(.horizontal, 14).padding(.vertical, 10)
                         .background(BX.surface, in: .rect(cornerRadius: 14))
                     }
@@ -323,49 +335,23 @@ struct ChannelScreen: View {
 // MARK: - You
 
 struct SettingsSheet: View {
-    @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     var body: some View {
-        @Bindable var model = model
-        NavigationStack {
-            Form {
-                Section("Watching") {
-                    Toggle("Calm mode", isOn: $model.calmMode)
-                    Picker("Watch later clears after", selection: $model.clearAfterWeeks) {
-                        ForEach([1, 2, 4, 8], id: \.self) { Text("\($0) week\($0 == 1 ? "" : "s")").tag($0) }
-                    }
-                    Toggle("Tint from the video", isOn: $model.tintFromVideo)
-                    Picker("Preview videos", selection: $model.previewMode) {
-                        ForEach(PreviewMode.allCases) { Text($0.title).tag($0) }
-                    }
-                    Toggle(isOn: $model.discoverChannels) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Recommend from channels you don't follow")
-                            if !model.recommendationStats.isEmpty {
-                                Text(model.recommendationStats).font(.system(size: 11)).foregroundStyle(BX.muted)
-                            }
-                        }
-                    }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack {
+                    Text("Settings").font(BX.display(30, .bold)).kerning(-0.6)
+                    Spacer()
+                    Button("Done") { dismiss() }.buttonStyle(.bx(.secondary, height: 34))
                 }
-                Section {
-                    GoogleAccountSection()
-                } header: { Text("YouTube account") } footer: {
-                    Text(model.syncEnabled
-                         ? "Likes, subscriptions, playlist edits and new playlists go to YouTube; each change uses 50 of your 10,000 daily quota units. Deleting a playlist only removes it from Boxtube."
-                         : "Boxtube copies your subscriptions, playlists and liked videos. Turn on sync to send changes you make here back to YouTube.")
-                }
-                Section {
-                    LabeledContent("YouTube API key", value: model.hasAPIKey ? "Added" : "Missing")
-                } header: { Text("Data") } footer: {
-                    Text(model.hasAPIKey ? "Search, topics and video lengths are on." : "Subscriptions work without a key. Add one in apple/Config/Secrets.xcconfig for search, topics and video lengths.")
-                }
-                Section {
-                    HiddenVideosRow()
-                    Button("Clear watch history", role: .destructive) { Task { try? await model.store.clearHistory() } }
-                }
+                .padding(.top, 8)
+                SettingsContent()
             }
-            .navigationTitle("Settings")
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 40)
         }
+        .background(BX.ground)
+        .presentationBackground(BX.ground)
+        .presentationDragIndicator(.visible)
+        .foregroundStyle(BX.text)
     }
 }

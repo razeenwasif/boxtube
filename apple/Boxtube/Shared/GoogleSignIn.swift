@@ -104,49 +104,45 @@ struct MyAvatar: View {
     }
 }
 
-/// Sign-in / import controls, used in Settings on both platforms.
+/// Sign-in / import controls, used in Settings on both platforms (rows of a `BXCard`).
 struct GoogleAccountSection: View {
     @Environment(AppModel.self) private var model
+    /// YouTube playlists removed from Boxtube (observed by the parent, so these rows stay a flat list).
+    var removedPlaylists = 0
     var body: some View {
         if !model.googleConfigured {
-            LabeledContent("Google account", value: "Add a client ID in apple/Config/Secrets.xcconfig")
+            BXRow("Google account", subtitle: "Add a client ID in apple/Config/Secrets.xcconfig")
         } else if let account = model.account {
             HStack(spacing: 12) {
                 MyAvatar(size: 36)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(account.name).font(.system(size: 14, weight: .semibold))
+                    Text(account.name).font(.system(size: 14.5, weight: .semibold))
                     if let email = account.email { Text(email).font(.system(size: 12)).foregroundStyle(BX.muted) }
                 }
             }
             Toggle(isOn: Binding(get: { model.syncEnabled }, set: { on in Task { await model.setSync(on) } })) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Sync changes to YouTube")
-                    Text("Likes, subscriptions and playlist edits").font(.system(size: 12)).foregroundStyle(BX.muted)
-                }
+                BXRowLabel(title: "Sync changes to YouTube", subtitle: "Likes, subscriptions and playlist edits")
             }
+            .toggleStyle(.bx)
             .disabled(model.isSigningIn)
             if model.syncEnabled { SyncStatusRows() }
-            RemovedPlaylistsRow()
-            Button {
+            if removedPlaylists > 0 {
+                BXActionRow(title: "Bring back \(removedPlaylists) removed playlist\(removedPlaylists == 1 ? "" : "s")", icon: "arrow.uturn.backward", busy: model.isImporting) {
+                    Task { await model.bringBackRemovedPlaylists() }
+                }
+            }
+            BXActionRow(title: model.isImporting ? "Importing…" : "Import from YouTube again", icon: "arrow.down.circle", busy: model.isImporting) {
                 Task { await model.importFromYouTube() }
-            } label: {
-                HStack {
-                    Text(model.isImporting ? "Importing…" : "Import from YouTube again")
-                    if model.isImporting { Spacer(); ProgressView().controlSize(.small) }
-                }
             }
-            .disabled(model.isImporting)
-            Button("Sign out", role: .destructive) { Task { await model.signOutOfGoogle() } }
+            BXActionRow(title: "Sign out", icon: "rectangle.portrait.and.arrow.right", destructive: true) {
+                Task { await model.signOutOfGoogle() }
+            }
         } else {
-            Button {
+            BXActionRow(title: model.isSigningIn ? "Waiting for Google…" : "Sign in with Google",
+                        subtitle: "Bring in your subscriptions, playlists and likes",
+                        icon: "person.crop.circle.badge.plus", busy: model.isSigningIn) {
                 Task { await model.signInWithGoogle() }
-            } label: {
-                HStack {
-                    Text(model.isSigningIn ? "Waiting for Google…" : "Sign in with Google")
-                    if model.isSigningIn { Spacer(); ProgressView().controlSize(.small) }
-                }
             }
-            .disabled(model.isSigningIn)
         }
     }
 }
@@ -161,7 +157,7 @@ private struct SyncStatusRows: View {
                 .foregroundStyle(sync.problem != nil ? BX.amber : (sync.summary.waiting > 0 ? BX.muted : BX.sage))
                 .frame(width: 18)
             VStack(alignment: .leading, spacing: 3) {
-                Text(model.syncStatusText).font(.system(size: 13, weight: .semibold))
+                Text(model.syncStatusText).font(.system(size: 13.5, weight: .semibold))
                 if let problem = sync.problem { Text(problem).font(.system(size: 12)).foregroundStyle(BX.muted) }
                 Text("\(model.quotaToday.formatted()) of 10,000 YouTube quota units used today")
                     .font(.system(size: 12)).foregroundStyle(BX.muted)
@@ -172,32 +168,92 @@ private struct SyncStatusRows: View {
             } label: {
                 if sync.syncing { ProgressView().controlSize(.small) } else { Text("Sync now") }
             }
+            .buttonStyle(.bx(.secondary, height: 32))
             .disabled(sync.syncing)
         }
         if sync.summary.failed > 0 {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("YouTube refused \(sync.summary.failed) change\(sync.summary.failed == 1 ? "" : "s")").font(.system(size: 13, weight: .semibold))
+                    Text("YouTube refused \(sync.summary.failed) change\(sync.summary.failed == 1 ? "" : "s")").font(.system(size: 13.5, weight: .semibold))
                     if let e = sync.summary.lastError { Text(e).font(.system(size: 12)).foregroundStyle(BX.muted).lineLimit(2) }
                 }
                 Spacer()
-                Button("Discard", role: .destructive) { Task { await model.retryFailedSync() } }
+                Button("Discard") { Task { await model.retryFailedSync() } }
+                    .buttonStyle(.bx(.destructive, height: 32))
             }
         }
     }
 }
 
-/// Offers to bring back YouTube playlists you removed from Boxtube.
-private struct RemovedPlaylistsRow: View {
+/// Everything in Settings, as Boxtube cards. The Mac's Settings window and the iPhone's Settings sheet both show it.
+struct SettingsContent: View {
     @Environment(AppModel.self) private var model
-    @State private var hidden = 0
+    @Environment(BXMenuHost.self) private var host: BXMenuHost?
+    @State private var removedPlaylists = 0
+
     var body: some View {
-        Group {
-            if hidden > 0 {
-                Button("Bring back \(hidden) removed playlist\(hidden == 1 ? "" : "s")") { Task { await model.bringBackRemovedPlaylists() } }
-                    .disabled(model.isImporting)
+        @Bindable var model = model
+        VStack(alignment: .leading, spacing: 24) {
+            #if os(macOS)
+            BXCard("You") {
+                BXRow("Your name") {
+                    TextField("Name", text: $model.displayName)
+                        .textFieldStyle(.plain).multilineTextAlignment(.trailing)
+                        .font(.system(size: 14.5)).foregroundStyle(BX.text2)
+                        .frame(maxWidth: 220)
+                }
+            }
+            #endif
+            BXCard("Watching") {
+                Toggle(isOn: $model.calmMode) {
+                    BXRowLabel(title: "Calm mode", subtitle: "Only channels you follow, newest first")
+                }
+                .toggleStyle(.bx(tint: BX.sage))
+                BXRow("Watch later clears after") {
+                    BXPicker(options: [1, 2, 4, 8], selection: $model.clearAfterWeeks, title: { "\($0) week\($0 == 1 ? "" : "s")" })
+                }
+                Toggle(isOn: $model.tintFromVideo) {
+                    #if os(macOS)
+                    BXRowLabel(title: "Tint the window from the video")
+                    #else
+                    BXRowLabel(title: "Tint from the video")
+                    #endif
+                }
+                .toggleStyle(.bx)
+                BXRow(previewTitle) {
+                    BXPicker(options: PreviewMode.allCases, selection: $model.previewMode, title: \.title)
+                }
+                Toggle(isOn: $model.discoverChannels) {
+                    BXRowLabel(title: "Recommend from channels you don't follow", subtitle: model.recommendationStats)
+                }
+                .toggleStyle(.bx)
+            }
+            BXCard("YouTube account", footer: model.syncEnabled
+                   ? "Likes, subscriptions, playlist edits and new playlists go to YouTube; each change uses 50 of your 10,000 daily quota units. Deleting a playlist only removes it from Boxtube."
+                   : "Boxtube copies your subscriptions, playlists and liked videos. Turn on sync to send changes you make here back to YouTube.") {
+                GoogleAccountSection(removedPlaylists: removedPlaylists)
+            }
+            BXCard("Data", footer: model.hasAPIKey ? "Search, topics and video lengths are on." : "Subscriptions work without a key. Add one in apple/Config/Secrets.xcconfig for search, topics and video lengths.") {
+                BXRow("YouTube API key") {
+                    Text(model.hasAPIKey ? "Added" : "Missing").font(.system(size: 13.5, weight: .semibold))
+                        .foregroundStyle(model.hasAPIKey ? BX.sageText : BX.amber)
+                }
+                BXRow("Notes", subtitle: model.notesSyncLine)
+                HiddenVideosRow()
+                BXActionRow(title: "Clear watch history", icon: "trash", destructive: true) {
+                    host?.show(.confirm("Clear watch history?", message: "Progress bars and History are emptied on this device. Recommendations start learning again.",
+                                        actions: [.init(title: "Clear", kind: .destructive) { _ in Task { try? await model.store.clearHistory() } }]))
+                }
             }
         }
-        .observing(model.store, { db in try Q.hiddenPlaylistCount(db) }) { hidden = $0 }
+        .observing(model.store, { db in try Q.hiddenPlaylistCount(db) }) { removedPlaylists = $0 }
+    }
+
+    private var previewTitle: String {
+        #if os(macOS)
+        "Preview videos on hover"
+        #else
+        "Preview videos"
+        #endif
     }
 }

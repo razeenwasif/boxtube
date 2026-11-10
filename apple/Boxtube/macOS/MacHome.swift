@@ -178,16 +178,22 @@ private struct HeroCard: View {
                             .background(BX.coral, in: Capsule())
                     }
                     .buttonStyle(.plain)
-                    Menu {
-                        Button(model.watchLaterIds.contains(video.id) ? "Remove from Watch later" : "Save to Watch later") { model.toggleWatchLater(video.id) }
-                        if !playlists.isEmpty { Divider() }
-                        ForEach(playlists) { p in Button("Add to \(p.playlist.title)") { model.add(video.id, to: p.playlist) } }
+                    BXMenuButton {
+                        BXMenuSection {
+                            BXMenuItem(model.watchLaterIds.contains(video.id) ? "Remove from Watch later" : "Save to Watch later", icon: "clock", tint: BX.amber) { model.toggleWatchLater(video.id) }
+                        }
+                        BXMenuSection("Add to playlist") {
+                            if playlists.isEmpty { BXMenuItem.note("No playlists yet", icon: "music.note.list", tint: BX.muted) }
+                            for p in playlists {
+                                BXMenuItem(p.playlist.title, icon: p.playlist.isMusic ? "music.note" : "list.bullet") { model.add(video.id, to: p.playlist) }
+                            }
+                        }
                     } label: {
                         Image(systemName: "text.badge.plus").font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
                             .frame(width: 40, height: 40)
                             .boxGlass(Circle(), tint: .white.opacity(0.08))
                     }
-                    .menuStyle(.button).menuIndicator(.hidden).buttonStyle(.plain).fixedSize()
+                    .fixedSize()
                     .help("Save to playlist")
                 }
             }

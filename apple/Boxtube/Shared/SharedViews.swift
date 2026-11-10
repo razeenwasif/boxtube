@@ -166,11 +166,12 @@ struct ShortCard: View {
 /// Mac: right-click opens the same menu as ⋯. iPhone: a long press shows the video's details
 /// (see `VideoPeek`); the ⋯ button is where the actions live.
 struct VideoMenu: ViewModifier {
+    @Environment(AppModel.self) private var model
     var video: Video
 
     func body(content: Content) -> some View {
         #if os(macOS)
-        content.contextMenu { VideoActions(video: video) }
+        content.bxContextMenu { model.videoMenu(video) }
         #else
         content.modifier(VideoPeekTrigger(video: video))
         #endif

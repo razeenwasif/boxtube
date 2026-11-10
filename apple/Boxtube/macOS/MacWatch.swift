@@ -141,11 +141,15 @@ struct MacWatchView: View {
     }
 
     private func addToPlaylist(_ v: Video) -> some View {
-        Menu {
-            Button(model.watchLaterIds.contains(v.id) ? "Remove from Watch later" : "Watch later") { model.toggleWatchLater(v.id) }
-            if !playlists.isEmpty {
-                Divider()
-                ForEach(playlists) { pl in Button(pl.playlist.title) { model.add(v.id, to: pl.playlist) } }
+        BXMenuButton {
+            BXMenuSection {
+                BXMenuItem(model.watchLaterIds.contains(v.id) ? "Remove from Watch later" : "Watch later", icon: "clock", tint: BX.amber) { model.toggleWatchLater(v.id) }
+            }
+            BXMenuSection("Add to playlist") {
+                if playlists.isEmpty { BXMenuItem.note("No playlists yet", icon: "music.note.list", tint: BX.muted) }
+                for pl in playlists {
+                    BXMenuItem(pl.playlist.title, icon: pl.playlist.isMusic ? "music.note" : "list.bullet") { model.add(v.id, to: pl.playlist) }
+                }
             }
         } label: {
             Image(systemName: "text.badge.plus").font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
@@ -154,7 +158,6 @@ struct MacWatchView: View {
                 .overlay(Circle().strokeBorder(.white.opacity(0.14)))
                 .contentShape(Circle())
         }
-        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
         .fixedSize()
         .help("Add to playlist")
         .accessibilityLabel("Add to playlist")
@@ -174,8 +177,8 @@ struct MacWatchView: View {
             }
             Group {
                 if subscribed {
-                    Menu {
-                        Button("Unsubscribe", role: .destructive) { model.unsubscribe(v.channelId) }
+                    BXMenuButton {
+                        BXMenuItem("Unsubscribe", icon: "minus.circle", destructive: true) { model.unsubscribe(v.channelId) }
                     } label: {
                         HStack(spacing: 7) {
                             IconView(.bell, size: 16, lineWidth: 1.8)
@@ -187,7 +190,7 @@ struct MacWatchView: View {
                         .background(tinted ? p.surface : Color(hex: 0x232327), in: Capsule())
                         .contentShape(Capsule())
                     }
-                    .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+                    .fixedSize()
                 } else {
                     Button { model.subscribe(channel ?? Channel(id: v.channelId, title: v.channelTitle)) } label: {
                         Text("Subscribe").font(.system(size: 13.5, weight: .bold)).foregroundStyle(p.accentInk)
@@ -234,16 +237,20 @@ struct MacWatchView: View {
             }
             .buttonStyle(.plain)
             .help("Save to Watch later")
-            Menu {
-                Button("Skim chapters") { showSkim = true }
-                Button("Open floating player") { openWindow(id: "floating") }
-                Divider()
-                Button("Copy link") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(v.watchURL.absoluteString, forType: .string) }
-                Button("Open on YouTube") { NSWorkspace.shared.open(v.watchURL) }
+            BXMenuButton(trailing: true) {
+                BXMenuSection {
+                    BXMenuItem("Skim chapters", icon: "square.grid.2x2") { showSkim = true }
+                    BXMenuItem("Open floating player", icon: "pip") { openWindow(id: "floating") }
+                }
+                BXMenuSection {
+                    BXMenuItem.share(v.watchURL)
+                    BXMenuItem("Copy link", icon: "link") { model.copyLink(v) }
+                    BXMenuItem("Open on YouTube", icon: "arrow.up.forward.app") { NSWorkspace.shared.open(v.watchURL) }
+                }
             } label: {
                 MoreDots().foregroundStyle(BX.text2).frame(width: 36, height: 36).background(chip, in: Circle()).contentShape(Circle())
             }
-            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+            .fixedSize()
             .accessibilityLabel("More actions")
         }
     }
@@ -574,11 +581,9 @@ struct MacPlayerBar: View {
             icon(model.player.captionsOn ? "captions.bubble.fill" : "captions.bubble", "Captions", size: 16) {
                 model.player.setCaptions(!model.player.captionsOn)
             }
-            Menu {
-                ForEach(rates, id: \.self) { r in
-                    Button { model.player.setRate(r) } label: {
-                        if r == s.rate { Label(Self.rate(r), systemImage: "checkmark") } else { Text(Self.rate(r)) }
-                    }
+            BXMenuButton(trailing: true) {
+                BXMenuSection("Speed") {
+                    for r in rates { BXMenuItem(Self.rate(r), checked: r == s.rate) { model.player.setRate(r) } }
                 }
             } label: {
                 Text(Self.rate(s.rate)).font(.system(size: 12, weight: .bold))
@@ -586,7 +591,7 @@ struct MacPlayerBar: View {
                     .background(.white.opacity(0.12), in: .rect(cornerRadius: 7))
                     .contentShape(Rectangle())
             }
-            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+            .fixedSize()
             .accessibilityLabel("Playback speed")
             icon("pip.enter", "Picture in picture", size: 16) { openWindow(id: "floating") }
             icon("arrow.up.left.and.arrow.down.right", "Full screen", size: 15) { NSApp.keyWindow?.toggleFullScreen(nil) }
@@ -757,8 +762,9 @@ struct MacNotesPanel: View {
                 .textSelection(.enabled)
                 Spacer(minLength: 0)
             }
-            .contextMenu {
-                Button(role: .destructive) { model.deleteNote(note) } label: { Label("Delete note", systemImage: "trash") }
+            .bxContextMenu {
+                BXMenuItem("Copy note", icon: "doc.on.doc") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(note.text, forType: .string) }
+                BXMenuItem("Delete note", icon: "trash", destructive: true) { model.deleteNote(note) }
             }
         }
 

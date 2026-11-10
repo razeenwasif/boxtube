@@ -66,76 +66,84 @@ extension AppModel {
 }
 
 /// Everything you can do with a video, YouTube's card menu plus Boxtube's extras.
-/// Used by every video's ⋯ button and its right-click / long-press menu.
-struct VideoActions: View {
-    @Environment(AppModel.self) private var model
-    @Environment(\.openURL) private var openURL
-    var video: Video
+/// Used by every video's ⋯ button and its right-click menu (Mac).
+extension AppModel {
+    @BXMenuBuilder
+    func videoMenu(_ video: Video) -> [BXMenuSection] {
+        let saved = watchLaterIds.contains(video.id)
+        let liked = likedIds.contains(video.id)
+        let watched = (progressById[video.id] ?? 0) >= 0.9
+        let following = channelIsSubscribed(video.channelId)
 
-    var body: some View {
-        let saved = model.watchLaterIds.contains(video.id)
-        let liked = model.likedIds.contains(video.id)
-        let watched = (model.progressById[video.id] ?? 0) >= 0.9
-        let following = model.channelIsSubscribed(video.channelId)
-
-        if let why = model.recommendationReasons[video.id] {
-            // Why Home picked it; shown as a label, not an action.
-            Section { Label(why, systemImage: "sparkles") }
+        if let why = recommendationReasons[video.id] {
+            // Why Home picked it; shown as a line, not an action.
+            BXMenuItem.note(why)
         }
-        Section {
-            Button { model.playNext(video) } label: { Label("Play next", systemImage: "text.line.first.and.arrowtriangle.forward") }
-            Button { model.addToQueue(video) } label: { Label("Add to queue", systemImage: "text.badge.plus") }
+        BXMenuSection {
+            BXMenuItem("Play next", icon: "text.line.first.and.arrowtriangle.forward") { self.playNext(video) }
+            BXMenuItem("Add to queue", icon: "text.badge.plus") { self.addToQueue(video) }
         }
-        Section {
-            Button { model.toggleWatchLater(video.id) } label: {
-                Label(saved ? "Remove from Watch later" : "Save to Watch later", systemImage: saved ? "clock.badge.xmark" : "clock")
+        BXMenuSection {
+            BXMenuItem(saved ? "Remove from Watch later" : "Save to Watch later", icon: saved ? "clock.badge.xmark" : "clock", tint: BX.amber) {
+                self.toggleWatchLater(video.id)
             }
-            Menu {
-                if model.playlistsCache.isEmpty { Text("No playlists yet") }
-                ForEach(model.playlistsCache) { p in
-                    Button(p.playlist.title) { model.add(video.id, to: p.playlist) }
-                }
-            } label: { Label("Save to playlist", systemImage: "music.note.list") }
-            Button { model.toggleLike(video.id) } label: {
-                Label(liked ? "Unlike" : "Like", systemImage: liked ? "hand.thumbsup.fill" : "hand.thumbsup")
-            }
+            playlistSubmenu(video)
+            BXMenuItem(liked ? "Unlike" : "Like", icon: liked ? "hand.thumbsup.fill" : "hand.thumbsup") { self.toggleLike(video.id) }
         }
-        Section {
-            ShareLink(item: video.watchURL) { Label("Share", systemImage: "square.and.arrow.up") }
-            Button { model.copyLink(video) } label: { Label("Copy link", systemImage: "link") }
-            Button { openURL(video.watchURL) } label: { Label("Open on YouTube", systemImage: "arrow.up.forward.app") }
+        BXMenuSection {
+            BXMenuItem.share(video.watchURL)
+            BXMenuItem("Copy link", icon: "link") { self.copyLink(video) }
+            BXMenuItem("Open on YouTube", icon: "arrow.up.forward.app") { openExternally(video.watchURL) }
         }
-        Section {
-            Button { model.setWatched(video, !watched) } label: {
-                Label(watched ? "Mark as unwatched" : "Mark as watched", systemImage: watched ? "eye.slash" : "eye")
-            }
-            Button { model.notInterested(video) } label: { Label("Not interested", systemImage: "nosign") }
+        BXMenuSection {
+            BXMenuItem(watched ? "Mark as unwatched" : "Mark as watched", icon: watched ? "eye.slash" : "eye") { self.setWatched(video, !watched) }
+            BXMenuItem("Not interested", icon: "nosign") { self.notInterested(video) }
             if !following {
-                Button { model.dontRecommend(video) } label: { Label("Don't recommend channel", systemImage: "minus.circle") }
+                BXMenuItem("Don't recommend channel", icon: "minus.circle") { self.dontRecommend(video) }
             }
-            Button { model.goToChannel(video.channelId) } label: { Label("Go to \(video.channelTitle)", systemImage: "person.crop.square") }
+            BXMenuItem("Go to \(video.channelTitle)", icon: "person.crop.square") { self.goToChannel(video.channelId) }
+        }
+    }
+
+    /// "Save to playlist" with your playlists inside.
+    func playlistSubmenu(_ video: Video, title: String = "Save to playlist") -> BXMenuItem {
+        .submenu(title, icon: "music.note.list") {
+            BXMenuSection("Your playlists") {
+                if playlistsCache.isEmpty { BXMenuItem.note("No playlists yet", icon: "music.note.list", tint: BX.muted) }
+                for p in playlistsCache {
+                    BXMenuItem(p.playlist.title, icon: p.playlist.isMusic ? "music.note" : "list.bullet") { self.add(video.id, to: p.playlist) }
+                }
+            }
         }
     }
 }
 
+/// Opens a link in the browser (or the YouTube app).
+@MainActor
+func openExternally(_ url: URL) {
+    #if os(macOS)
+    NSWorkspace.shared.open(url)
+    #else
+    UIApplication.shared.open(url)
+    #endif
+}
+
 /// The ⋯ button on a video card or row.
 struct VideoMoreButton: View {
+    @Environment(AppModel.self) private var model
     var video: Video
     var vertical = true
     var size: CGFloat = 16
 
     var body: some View {
-        Menu {
-            VideoActions(video: video)
+        BXMenuButton(trailing: true) {
+            model.videoMenu(video)
         } label: {
             MoreDots(vertical: vertical, size: size)
                 .foregroundStyle(BX.muted)
                 .frame(width: 30, height: 30)
                 .contentShape(Rectangle())
         }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
         .fixedSize()
         .accessibilityLabel("More for \(video.title)")
         #if os(macOS)
@@ -150,7 +158,7 @@ struct HiddenVideosRow: View {
     var body: some View {
         if !model.hidden.isEmpty {
             let parts = [count(model.hidden.videos.count, "video"), count(model.hidden.channels.count, "channel")].compactMap { $0 }
-            Button("Show hidden \(parts.joined(separator: " and ")) again") { Task { try? await model.store.unhideAll() } }
+            BXActionRow(title: "Show hidden \(parts.joined(separator: " and ")) again", icon: "eye") { Task { try? await model.store.unhideAll() } }
         }
     }
     private func count(_ n: Int, _ word: String) -> String? { n == 0 ? nil : "\(n) \(word)\(n == 1 ? "" : "s")" }

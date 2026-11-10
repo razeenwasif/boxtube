@@ -14,7 +14,7 @@ struct MacCalmHome: View {
                 HStack {
                     Label("Calm mode", systemImage: "leaf.fill").font(BX.display(28, .bold)).foregroundStyle(BX.sageText)
                     Spacer()
-                    Button("Turn off") { model.calmMode = false }.buttonStyle(.bordered)
+                    Button("Turn off") { model.calmMode = false }.buttonStyle(.bx(.calm))
                 }
                 Text("Only channels you follow, newest first. No recommendations, no counts, no Shorts. You're caught up after \(feed.count) videos.")
                     .font(.system(size: 14)).foregroundStyle(Color(hex: 0xA9ADA6))
@@ -49,7 +49,7 @@ struct MacVideoGrid: View {
                     if let playlist {
                         PublishPlaylistButton(playlist: playlist, videoCount: videos.count, compact: true)
                         Toggle("Show in Music", isOn: Binding(get: { playlist.isMusic }, set: { on in Task { try? await model.store.setPlaylistMusic(playlist.id, on) } }))
-                            .toggleStyle(.switch).controlSize(.small).tint(BX.coral)
+                            .toggleStyle(BXToggleStyle(stretch: false))
                             .font(.system(size: 13, weight: .semibold)).foregroundStyle(BX.text2)
                             .padding(.trailing, 8)
                     }
@@ -106,9 +106,8 @@ struct MacSubscriptions: View {
                 HStack {
                     LargeTitle("Subscriptions")
                     Spacer()
-                    TextField(model.hasAPIKey ? "Add a channel (name, URL or ID)" : "Add a channel by URL or ID (UC…)", text: $adding)
-                        .textFieldStyle(.roundedBorder).frame(width: 320)
-                        .onSubmit(add)
+                    BXTextField(placeholder: model.hasAPIKey ? "Add a channel (name, URL or ID)" : "Add a channel by URL or ID (UC…)", text: $adding, onSubmit: add)
+                        .frame(width: 340)
                 }
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 16) {
@@ -121,7 +120,10 @@ struct MacSubscriptions: View {
                                 }
                             }
                             .buttonStyle(.plain)
-                            .contextMenu { Button("Unsubscribe", role: .destructive) { model.unsubscribe(row.channel.id) } }
+                            .bxContextMenu {
+                                BXMenuItem("Open channel", icon: "person.crop.square") { model.push(.channel(row.channel.id)) }
+                                BXMenuItem("Unsubscribe", icon: "minus.circle", destructive: true) { model.unsubscribe(row.channel.id) }
+                            }
                         }
                     }
                 }
@@ -163,14 +165,14 @@ struct MacPlaylists: View {
                 HStack {
                     LargeTitle("Playlists")
                     Spacer()
-                    TextField("New playlist", text: $newTitle).textFieldStyle(.roundedBorder).frame(width: 220)
-                        .onSubmit { let t = newTitle; newTitle = ""; guard !t.isEmpty else { return }; Task { await model.createPlaylist(title: t) } }
+                    BXTextField(placeholder: "New playlist", text: $newTitle) { let t = newTitle.trimmingCharacters(in: .whitespaces); newTitle = ""; guard !t.isEmpty else { return }; Task { await model.createPlaylist(title: t) } }
+                        .frame(width: 240)
                 }
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 20)], spacing: 26) {
                     ForEach(playlists) { p in
                         Button { model.push(.playlist(p.id)) } label: { StackedCoverMac(summary: p) }
                             .buttonStyle(.plain)
-                            .contextMenu { PlaylistActions(summary: p, publishing: publishing.contains(p.id), toDelete: $toDelete, toPublish: $toPublish) }
+                            .bxContextMenu { model.playlistMenu(p, publishing: publishing.contains(p.id), toDelete: $toDelete, toPublish: $toPublish) }
                             .overlay(alignment: .bottomTrailing) {
                                 PlaylistMoreButton(summary: p, publishing: publishing.contains(p.id), toDelete: $toDelete, toPublish: $toPublish)
                                     .offset(x: 4, y: 2)
@@ -216,10 +218,8 @@ struct MacWatchLater: View {
                     LargeTitle("Watch later")
                     Text("\(rows.count) videos · clears after \(weeks) weeks unless pinned").foregroundStyle(BX.muted)
                     Spacer()
-                    Picker("Clear after", selection: Binding(get: { model.clearAfterWeeks }, set: { model.clearAfterWeeks = $0 })) {
-                        ForEach([1, 2, 4, 8], id: \.self) { Text("\($0) week\($0 == 1 ? "" : "s")").tag($0) }
-                    }
-                    .frame(width: 180)
+                    BXPicker(options: [1, 2, 4, 8], selection: Binding(get: { model.clearAfterWeeks }, set: { model.clearAfterWeeks = $0 }),
+                             title: { "\($0) week\($0 == 1 ? "" : "s")" }, icon: "clock", label: { "Clears after \($0) week\($0 == 1 ? "" : "s")" })
                 }
                 LazyVGrid(columns: gridColumns, spacing: 28) {
                     ForEach(rows) { r in
@@ -297,13 +297,13 @@ struct MacChannel: View {
                     if let channel {
                         if channel.isSubscribed {
                             Toggle("Show in Music", isOn: Binding(get: { channel.isMusic }, set: { on in Task { try? await model.store.setChannelMusic(channel.id, on) } }))
-                                .toggleStyle(.switch).controlSize(.small).tint(BX.coral)
+                                .toggleStyle(BXToggleStyle(stretch: false))
                                 .font(.system(size: 13, weight: .semibold)).foregroundStyle(BX.text2)
                                 .padding(.trailing, 8)
                                 .help("Music channels appear under Artists in Music mode instead of the Videos feed")
                         }
                         Button(channel.isSubscribed ? "Subscribed" : "Subscribe") { channel.isSubscribed ? model.unsubscribe(channel.id) : model.subscribe(channel) }
-                            .buttonStyle(.borderedProminent).tint(channel.isSubscribed ? BX.surface3 : BX.coral)
+                            .buttonStyle(.bx(channel.isSubscribed ? .secondary : .light))
                     }
                 }
                 LazyVGrid(columns: gridColumns, spacing: 28) { ForEach(videos) { VideoCard(video: $0) } }

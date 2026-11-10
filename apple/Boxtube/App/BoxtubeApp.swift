@@ -11,6 +11,7 @@ struct BoxtubeApp: App {
         WindowGroup {
             PhoneRoot()
                 .environment(model)
+                .bxMenuHost()
                 .preferredColorScheme(.dark)
                 .onOpenURL { model.handle($0) }
                 .task { await model.start() }
@@ -19,6 +20,7 @@ struct BoxtubeApp: App {
         WindowGroup("Boxtube", id: "main") {
             MacRoot()
                 .environment(model)
+                .bxMenuHost()
                 .preferredColorScheme(.dark)
                 .frame(minWidth: 1100, minHeight: 720)
                 .onOpenURL { model.handle($0) }
@@ -32,6 +34,7 @@ struct BoxtubeApp: App {
         Window("Floating player", id: "floating") {
             FloatingPlayerWindow()
                 .environment(model)
+                .bxMenuHost()
                 .preferredColorScheme(.dark)
         }
         .windowStyle(.hiddenTitleBar)
@@ -46,7 +49,7 @@ struct BoxtubeApp: App {
         // The menu bar icon is an AppKit status item (MenuBarStatusItem), installed by AppModel.start().
 
         Settings {
-            MacSettings().environment(model).preferredColorScheme(.dark)
+            MacSettings().environment(model).bxMenuHost().preferredColorScheme(.dark)
         }
         #endif
     }

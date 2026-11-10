@@ -105,10 +105,14 @@ private struct NoteGroupCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .contentShape(Rectangle())
-                .contextMenu {
-                    Button { model.open(v, at: n.time) } label: { Label("Play from \(Format.clock(n.time))", systemImage: "play.fill") }
-                    Button { UIPasteboard.general.string = n.text; model.flash("Note copied") } label: { Label("Copy note", systemImage: "doc.on.doc") }
-                    Button(role: .destructive) { model.deleteNote(n) } label: { Label("Delete note", systemImage: "trash") }
+                .bxContextMenu {
+                    BXMenuSection {
+                        BXMenuItem("Play from \(Format.clock(n.time))", icon: "play.fill", tint: BX.amber) { model.open(v, at: n.time) }
+                        BXMenuItem("Copy note", icon: "doc.on.doc") { UIPasteboard.general.string = n.text; model.flash("Note copied") }
+                    }
+                    BXMenuSection {
+                        BXMenuItem("Delete note", icon: "trash", destructive: true) { model.deleteNote(n) }
+                    }
                 }
             }
         }
