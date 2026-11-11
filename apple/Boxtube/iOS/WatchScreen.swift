@@ -25,6 +25,9 @@ struct WatchScreen: View {
     @State private var showQueue = false
     /// Held down on the video: plays at 2× until let go, then goes back to this speed.
     @State private var holdingFrom: Double?
+    /// Double tap on the left or right third skips 5 seconds; repeated taps add up in the badge.
+    @State private var skipFlash: SkipFlash?
+    @State private var playerWidth: CGFloat = 390
     @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     var body: some View {
@@ -116,9 +119,31 @@ struct WatchScreen: View {
             PlayerSurface(engine: model.player)
             Color.black.opacity(controlsVisible ? 0.28 : 0.001)
                 .contentShape(Rectangle())
-                .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { controlsVisible.toggle() } }
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { playerWidth = $0 }
+                // Double tap the left or right third to skip back or ahead 5 s; a single tap shows or hides the controls.
+                .gesture(SpatialTapGesture(count: 2).onEnded { e in doubleTap(at: e.location.x) }
+                    .exclusively(before: TapGesture().onEnded { withAnimation(.easeOut(duration: 0.2)) { controlsVisible.toggle() } }))
                 // Hold anywhere on the video for 2×; let go to return to the speed it was.
                 .gesture(SpeedHold { holding in holding ? startHold() : endHold() })
+            if let flash = skipFlash {
+                HStack(spacing: 0) {
+                    if flash.forward { Spacer(minLength: 0) }
+                    VStack(spacing: 4) {
+                        Image(systemName: flash.forward ? "forward.fill" : "backward.fill").font(.system(size: 20, weight: .semibold))
+                        Text("\(flash.seconds) s").font(.system(size: 13, weight: .bold).monospacedDigit())
+                    }
+                    .frame(width: playerWidth * 0.36)
+                    .frame(maxHeight: .infinity)
+                    .background(.white.opacity(0.12), in: UnevenRoundedRectangle(
+                        topLeadingRadius: flash.forward ? 400 : 0, bottomLeadingRadius: flash.forward ? 400 : 0,
+                        bottomTrailingRadius: flash.forward ? 0 : 400, topTrailingRadius: flash.forward ? 0 : 400))
+                    if !flash.forward { Spacer(minLength: 0) }
+                }
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+                .transition(.opacity)
+                .id(flash.forward)
+            }
             if holdingFrom != nil {
                 VStack {
                     Label("2×", systemImage: "forward.fill")
@@ -182,8 +207,32 @@ struct WatchScreen: View {
                         PlaybackText { s in
                             Text("\(Format.clock(s.time)) / \(Format.clock(s.duration))")
                                 .font(.system(size: 12, weight: .semibold).monospacedDigit())
-                            + Text(Chapter.current(in: chapters, at: s.time).map { " · \($0.title)" } ?? "")
-                                .font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.7))
+                        }
+                        if !chapters.isEmpty {
+                            // The chapter name opens the chapter list, so you can jump around in full screen too.
+                            let index = model.currentChapter ?? 0
+                            BXMenuButton {
+                                BXMenuSection("Chapters") {
+                                    for c in chapters {
+                                        BXMenuItem(c.title, detail: Format.clock(c.start), checked: c.index == index) {
+                                            model.player.seek(to: c.start)
+                                            pokeControls()
+                                        }
+                                    }
+                                }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Text(chapters[min(index, chapters.count - 1)].title).lineLimit(1)
+                                    Image(systemName: "chevron.up.chevron.down").font(.system(size: 9, weight: .bold))
+                                }
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.85))
+                                .padding(.horizontal, 9).frame(height: 26)
+                                .background(.white.opacity(0.14), in: Capsule())
+                                .contentShape(Capsule())
+                            }
+                            .accessibilityLabel("Chapters")
+                            .accessibilityValue(chapters[min(index, chapters.count - 1)].title)
                         }
                         Spacer()
                         Button { Orientation.setFullScreen(!fullScreen) } label: {
@@ -233,6 +282,34 @@ struct WatchScreen: View {
             guard controlsVisible, model.player.isPlaying else { return }
             try? await Task.sleep(for: .seconds(3.5))
             withAnimation { controlsVisible = false }
+        }
+    }
+
+    /// Keeps the controls up a little longer after using them.
+    private func pokeControls() {
+        controlsVisible = false
+        withAnimation(.easeOut(duration: 0.2)) { controlsVisible = true }
+    }
+
+    struct SkipFlash: Equatable {
+        var forward: Bool
+        var seconds: Int
+        var stamp: Date
+    }
+
+    private func doubleTap(at x: CGFloat) {
+        let third = playerWidth / 3
+        guard x < third || x > playerWidth - third else { return }   // the middle third does nothing
+        let forward = x > playerWidth - third
+        model.player.skip(forward ? 5 : -5)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        // Taps in a row on the same side add up, like YouTube's "15 seconds".
+        let total = (skipFlash?.forward == forward ? skipFlash?.seconds ?? 0 : 0) + 5
+        let flash = SkipFlash(forward: forward, seconds: total, stamp: .now)
+        withAnimation(.easeOut(duration: 0.12)) { skipFlash = flash }
+        Task {
+            try? await Task.sleep(for: .seconds(0.8))
+            if skipFlash == flash { withAnimation(.easeOut(duration: 0.25)) { skipFlash = nil } }
         }
     }
 
