@@ -5,15 +5,17 @@
 #   * it runs on atlas itself (runs-on: host), which has Xcode 27.2. GitHub's
 #     runners stop at Xcode 26.2, which is why the GitHub workflow is manual
 #     and fails.
-#   * still manual for now: host jobs need the server started with
-#     --host-executor, which is off. Start it with: ntr run start apple -b main
-#     When it's on, bring back push and pull_request with paths: [apple/**].
-#   * xcodegen has to be on atlas's PATH already; the job doesn't install
-#     things on atlas
+#   * it runs for changes under apple/ (and this file), on pushes to main and
+#     pull requests, now that atlas allows host jobs; start it by hand with
+#     ntr run start apple -b main
+#   * xcodegen has to be on atlas's PATH already (it's in Homebrew there);
+#     the job doesn't install things on atlas
 
 name: Apple apps
 
 on:
+  push: { branches: [main], paths: ["apple/**", ".neutrino/workflows/apple.yml"] }
+  pull_request: { paths: ["apple/**", ".neutrino/workflows/apple.yml"] }
   workflow_dispatch: {}
 
 concurrency:
