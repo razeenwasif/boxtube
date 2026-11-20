@@ -1,0 +1,53 @@
+# boxtube's .github/workflows/apple.yml, on Neutrino.
+#
+# Builds the iPhone and Mac apps and runs BoxtubeKit's tests. Nothing is
+# signed and no keys are needed. Changes from the GitHub version:
+#   * it runs on atlas itself (runs-on: host), which has Xcode 27.2. GitHub's
+#     runners stop at Xcode 26.2, which is why the GitHub workflow is manual
+#     and fails.
+#   * still manual for now: host jobs need the server started with
+#     --host-executor, which is off. Start it with: ntr run start apple -b main
+#     When it's on, bring back push and pull_request with paths: [apple/**].
+#   * xcodegen has to be on atlas's PATH already; the job doesn't install
+#     things on atlas
+
+name: Apple apps
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: apple-${{ neutrino.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: host
+    timeout-minutes: 45
+    steps:
+      - name: Check the tools
+        run: |
+          xcodebuild -version
+          xcodebuild -version | grep -q "Xcode 27" || { echo "The apps target iOS 27 and macOS 27, so they need Xcode 27."; exit 1; }
+          command -v xcodegen || { echo "xcodegen isn't on atlas's PATH (brew install xcodegen)."; exit 1; }
+      - name: Test BoxtubeKit
+        working-directory: apple/Packages/BoxtubeKit
+        run: swift test
+      - name: Generate the Xcode project
+        working-directory: apple
+        run: xcodegen generate
+      # pipefail, so a failed build isn't hidden by `| tail`.
+      - name: Build for Mac
+        working-directory: apple
+        shell: bash
+        run: >
+          set -o pipefail;
+          xcodebuild -project Boxtube.xcodeproj -scheme Boxtube -destination "generic/platform=macOS"
+          -configuration Debug CODE_SIGNING_ALLOWED=NO -skipPackagePluginValidation build | tail -20
+      - name: Build for iPhone
+        working-directory: apple
+        shell: bash
+        run: >
+          set -o pipefail;
+          xcodebuild -project Boxtube.xcodeproj -scheme Boxtube -destination "generic/platform=iOS"
+          -configuration Debug CODE_SIGNING_ALLOWED=NO -skipPackagePluginValidation build | tail -20
